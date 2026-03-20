@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+:root {
+  --bg0: #fbfbf7;
+  --bg1: #f5f1e6;
+  --ink: #0f172a;
+  --muted: #475569;
+  --brand: #2563eb; /* blue-600 */
+  --brand2: #0a9f8d;
+  --gold: #caa24b;
+
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  background:
+    radial-gradient(900px 500px at 20% 0%, rgba(37, 99, 235, 0.12), transparent 55%),
+    radial-gradient(800px 500px at 80% 30%, rgba(10, 159, 141, 0.12), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+}
+
+::selection {
+  background: rgba(202, 162, 75, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Better focus outlines across the app */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+/* Utility helpers */
+.font-display {
+  font-family: "Fraunces", ui-serif, Georgia, serif;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
