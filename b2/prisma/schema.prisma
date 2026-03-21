@@ -4,27 +4,26 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "mysql"
-  // url      = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
-
 
 // User model
 model User {
-  id String @id @default(uuid())
-  name String
-  email String @unique
-  password String
-  role Role @default(TEACHER)
-  uniqueId String @unique
-  MFA_enabled Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  password     String
+  role         Role          @default(TEACHER)
+  uniqueId     String?       @unique
+  MFA_enabled  Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  activityLogs ActivityLog[]
 }
 
 // user role enum
@@ -34,4 +33,15 @@ enum Role {
   ASSISTANT_HEADTEACHER
   TEACHER
   PARENT
+}
+
+// Activity log model
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  timestamp DateTime @default(now())
+
+  // Relation to User
+  user User @relation(fields: [userId], references: [id])
 }

@@ -52,7 +52,7 @@ export function AuthProvider({ children }) {
     return {
       token,
       user,
-      role: user?.role || "parent",
+      role: user?.role || "admin",
       isAuthenticated,
       isBooting,
       async login(credentials) {

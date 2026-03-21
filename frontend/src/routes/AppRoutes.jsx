@@ -66,7 +66,7 @@ export default function AppRoutes() {
         <Route path="/entrance-exam/:code" element={<EntranceExamPortal />} />
         <Route path="/entrance-exam/:code/submitted" element={<EntranceExamSubmitted />} />
 
-        <Route element={<ProtectedRoute />}>
+        {/* <Route element={<ProtectedRoute />}> */}
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<RoleHomeRedirect />} />
 
@@ -144,7 +144,7 @@ export default function AppRoutes() {
             <Route path="/settings/backup" element={<BackupSystem />} />
             <Route path="/settings/logs" element={<ActivityLogs />} />
           </Route>
-        </Route>
+        {/* </Route> */}
 
         <Route path="*" element={<NotFound />} />
       </Routes>

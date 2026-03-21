@@ -44,3 +44,11 @@ const extractToken = (req) => {
     const token = authHeader.split(' ')[1];
     return token;
 }
+
+
+
+module.exports = {
+    generateToken,
+    verifyToken,
+    extractToken
+}
