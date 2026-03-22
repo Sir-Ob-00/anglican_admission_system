@@ -7,12 +7,16 @@ import Table from "../../components/common/Table";
 import { useAuth } from "../../context/AuthContext";
 import { listParents, createParent, updateParent } from "../../services/parentService";
 import { listUsers } from "../../services/userService";
+import { listStudents } from "../../services/studentService";
 
 export default function ParentsList() {
   const [rows, setRows] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [editing, setEditing] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedClass, setSelectedClass] = useState("");
   const { role } = useAuth();
   const {
     register,
@@ -22,10 +26,22 @@ export default function ParentsList() {
   } = useForm({ defaultValues: { phone: "", address: "" } });
 
   async function refresh() {
-    const [parentsRes, usersRes] = await Promise.all([listParents(), listUsers({ role: "parent" })]);
+    const [parentsRes, usersRes, studentsRes] = await Promise.all([
+      listParents(), 
+      listUsers({ role: "parent" }),
+      listStudents()
+    ]);
     const parentItems = Array.isArray(parentsRes) ? parentsRes : parentsRes.items || [];
     const userItems = Array.isArray(usersRes) ? usersRes : usersRes.items || [];
+    const studentItems = Array.isArray(studentsRes) ? studentsRes : studentsRes.items || [];
+    
     setProfiles(parentItems);
+    setStudents(studentItems);
+    
+    // Extract unique classes from students
+    const uniqueClasses = [...new Set(studentItems.map(s => s.classAssigned?.name || s.admittedClass).filter(Boolean))];
+    setClasses(uniqueClasses.sort());
+    
     const profileByUser = new Map(parentItems.map((p) => [String(p.user?._id || p.user), p]));
     const merged = userItems.map((u) => ({
       id: u._id || u.id,
@@ -54,13 +70,38 @@ export default function ParentsList() {
     return () => {
       ignore = true;
     };
-  }, [role]);
+  }, [role, reset]);
+
+  // Filter parents based on selected class
+  const filteredRows = useMemo(() => {
+    if (!selectedClass) return rows;
+    
+    // Get students in the selected class
+    const studentsInClass = students.filter(s => 
+      (s.classAssigned?.name || s.admittedClass) === selectedClass
+    );
+    
+    // Get parent user IDs from those students
+    const parentUserIds = new Set(studentsInClass.map(s => String(s.parentUser?._id || s.parentUser)));
+    
+    // Filter parents who have wards in this class
+    return rows.filter(parent => parentUserIds.has(String(parent.user?._id || parent.id)));
+  }, [rows, students, selectedClass]);
 
   const columns = useMemo(
     () => [
       { key: "name", header: "Parent", render: (r) => r.name || r.user?.name || "—" },
       { key: "username", header: "Username", render: (r) => r.username || r.user?.username || "—" },
       { key: "phone", header: "Phone", render: (r) => r.profile?.phone || "—" },
+      { key: "classes", header: "Ward Classes", render: (r) => {
+        // Get all students for this parent
+        const parentStudents = students.filter(s => 
+          String(s.parentUser?._id || s.parentUser) === String(r.user?._id || r.id)
+        );
+        // Get unique classes
+        const parentClasses = [...new Set(parentStudents.map(s => s.classAssigned?.name || s.admittedClass).filter(Boolean))];
+        return parentClasses.length > 0 ? parentClasses.join(", ") : "—";
+      }},
       { key: "profile", header: "Profile", render: (r) => (r.profile ? "Complete" : "Missing") },
       {
         key: "actions",
@@ -97,7 +138,47 @@ export default function ParentsList() {
           <div className="text-sm text-slate-600">Access denied.</div>
         </Panel>
       ) : null}
-      <Table title="Parents List" rows={rows} columns={columns} />
+      
+      {/* Class Filter */}
+      {classes.length > 0 && (
+        <Panel className="p-4">
+          <div className="text-sm font-semibold text-slate-900 mb-3">Filter by Class</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-2xl px-3 text-xs font-semibold ${
+                selectedClass === "" 
+                  ? "bg-[color:var(--brand)] text-white" 
+                  : "bg-slate-900/5 text-slate-800 hover:bg-slate-900/10"
+              }`}
+              onClick={() => setSelectedClass("")}
+            >
+              All Classes
+            </button>
+            {classes.map((className) => (
+              <button
+                key={className}
+                type="button"
+                className={`inline-flex h-8 items-center justify-center rounded-2xl px-3 text-xs font-semibold ${
+                  selectedClass === className 
+                    ? "bg-[color:var(--brand)] text-white" 
+                    : "bg-slate-900/5 text-slate-800 hover:bg-slate-900/10"
+                }`}
+                onClick={() => setSelectedClass(className)}
+              >
+                {className}
+              </button>
+            ))}
+          </div>
+          {selectedClass && (
+            <div className="mt-3 text-sm text-slate-600">
+              Showing parents with wards in <strong>{selectedClass}</strong>
+            </div>
+          )}
+        </Panel>
+      )}
+      
+      <Table title="Parents List" rows={filteredRows} columns={columns} />
 
       <Modal
         open={isOpen}

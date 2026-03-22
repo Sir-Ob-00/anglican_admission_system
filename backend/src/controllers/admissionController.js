@@ -153,3 +153,108 @@ export async function downloadConfirmation(req, res, next) {
     next(e);
   }
 }
+
+// Update student information
+export async function updateStudent(req, res, next) {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // Validate required fields
+    if (!id) {
+      return res.status(400).json({ message: "Student ID is required" });
+    }
+    
+    // Find and update student
+    const student = await Student.findOneAndUpdate(
+      { _id: id },
+      { ...updates, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate("classAssigned", "name").populate("parentUser", "name email");
+    
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    
+    // Log the update
+    await logActivity({
+      userId: req.user._id,
+      action: "Updated student information",
+      ipAddress: req.ip,
+      meta: { studentId: id, updates: Object.keys(updates) }
+    });
+    
+    res.json(student);
+  } catch (e) {
+    next(e);
+  }
+}
+
+// Delete student from database
+export async function deleteStudent(req, res, next) {
+  try {
+    const { id } = req.params;
+    
+    // Validate required fields
+    if (!id) {
+      return res.status(400).json({ message: "Student ID is required" });
+    }
+    
+    // Find student first to get details for logging
+    const student = await Student.findById(id).populate("applicant");
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    
+    // Delete the student record
+    await Student.findByIdAndDelete(id);
+    
+    // Update the applicant status back to admitted (not enrolled as student)
+    if (student.applicant) {
+      await Applicant.findByIdAndUpdate(student.applicant._id, {
+        admissionStatus: "admitted",
+        updatedAt: new Date()
+      });
+    }
+    
+    // Log the deletion
+    await logActivity({
+      userId: req.user._id,
+      action: "Deleted student record",
+      ipAddress: req.ip,
+      meta: { 
+        studentId: id,
+        studentName: student.fullName,
+        admissionNumber: student.admissionNumber
+      }
+    });
+    
+    res.json({ message: "Student deleted successfully" });
+  } catch (e) {
+    next(e);
+  }
+}
+
+// Get student details with full information
+export async function getStudentDetails(req, res, next) {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ message: "Student ID is required" });
+    }
+    
+    const student = await Student.findById(id)
+      .populate("classAssigned", "name teacher")
+      .populate("parentUser", "name email contact")
+      .populate("applicant", "fullName dateOfBirth gender classApplyingFor address");
+    
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    
+    res.json(student);
+  } catch (e) {
+    next(e);
+  }
+}

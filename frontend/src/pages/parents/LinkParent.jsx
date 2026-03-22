@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import PageHeader from "../../components/common/PageHeader";
 import Panel from "../../components/common/Panel";
 import { linkParentToStudent } from "../../services/parentService";
@@ -18,6 +18,12 @@ export default function LinkParent() {
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedParentId, setSelectedParentId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [showParentDropdown, setShowParentDropdown] = useState(false);
+  const [selectedStudentName, setSelectedStudentName] = useState("");
+  const [selectedParentName, setSelectedParentName] = useState("");
+  const studentDropdownRef = useRef(null);
+  const parentDropdownRef = useRef(null);
 
   useEffect(() => {
     let ignore = false;
@@ -80,6 +86,54 @@ export default function LinkParent() {
     });
   }, [parents, parentQuery]);
 
+  // Handle student selection
+  const handleStudentSelect = (student) => {
+    setSelectedStudentId(student._id || student.id);
+    setSelectedStudentName(student.fullName);
+    setShowStudentDropdown(false);
+    setStudentQuery(student.fullName);
+  };
+
+  // Handle parent selection
+  const handleParentSelect = (parent) => {
+    setSelectedParentId(parent._id || parent.id);
+    setSelectedParentName(parent.name || parent.username);
+    setShowParentDropdown(false);
+    setParentQuery(parent.name || parent.username);
+  };
+
+  // Clear selections
+  const clearStudentSelection = () => {
+    setSelectedStudentId("");
+    setSelectedStudentName("");
+    setStudentQuery("");
+    setShowStudentDropdown(false);
+  };
+
+  const clearParentSelection = () => {
+    setSelectedParentId("");
+    setSelectedParentName("");
+    setParentQuery("");
+    setShowParentDropdown(false);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (studentDropdownRef.current && !studentDropdownRef.current.contains(event.target)) {
+        setShowStudentDropdown(false);
+      }
+      if (parentDropdownRef.current && !parentDropdownRef.current.contains(event.target)) {
+        setShowParentDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -106,70 +160,114 @@ export default function LinkParent() {
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div>
             <div className="text-sm font-semibold text-slate-900">Select student</div>
-            <input
-              className="mt-2 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
-              value={studentQuery}
-              onChange={(e) => setStudentQuery(e.target.value)}
-              placeholder="Search students in class"
-            />
-            <div className="mt-3 max-h-[260px] space-y-2 overflow-auto pr-1">
-              {filteredStudents.length ? (
-                filteredStudents.map((s) => {
-                  const id = s._id || s.id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm ${
-                        String(selectedStudentId) === String(id)
-                          ? "border-blue-300 bg-blue-50 text-blue-900"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
-                      }`}
-                      onClick={() => setSelectedStudentId(id)}
-                    >
-                      <span className="font-semibold">{s.fullName || "Student"}</span>
-                      <span className="text-xs text-slate-500">{s.classAssigned?.name || activeTab}</span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="text-xs text-slate-500">No students found for this class.</div>
+            <div className="relative">
+              <input
+                className="mt-2 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+                value={studentQuery}
+                onChange={(e) => {
+                  setStudentQuery(e.target.value);
+                  setShowStudentDropdown(true);
+                }}
+                onFocus={() => setShowStudentDropdown(true)}
+                placeholder="Type student name to search..."
+              />
+              {selectedStudentName && (
+                <button
+                  type="button"
+                  onClick={clearStudentSelection}
+                  className="absolute right-2 top-3 text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              )}
+              
+              {showStudentDropdown && studentQuery && (
+                <div ref={studentDropdownRef} className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                  {filteredStudents.length > 0 ? (
+                    filteredStudents.map((s) => {
+                      const id = s._id || s.id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          onClick={() => handleStudentSelect(s)}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{s.fullName}</span>
+                            <span className="text-xs text-slate-500">{s.classAssigned?.name || activeTab}</span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-slate-500">No students found</div>
+                  )}
+                </div>
               )}
             </div>
+            
+            {selectedStudentName && (
+              <div className="mt-2 p-2 bg-blue-50 rounded-lg text-sm text-blue-800">
+                Selected: <strong>{selectedStudentName}</strong>
+              </div>
+            )}
           </div>
 
           <div>
             <div className="text-sm font-semibold text-slate-900">Select parent</div>
-            <input
-              className="mt-2 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
-              value={parentQuery}
-              onChange={(e) => setParentQuery(e.target.value)}
-              placeholder="Search parent by name, username, or email"
-            />
-            <div className="mt-3 max-h-[260px] space-y-2 overflow-auto pr-1">
-              {filteredParents.length ? (
-                filteredParents.map((p) => {
-                  const id = p._id || p.id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm ${
-                        String(selectedParentId) === String(id)
-                          ? "border-blue-300 bg-blue-50 text-blue-900"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
-                      }`}
-                      onClick={() => setSelectedParentId(id)}
-                    >
-                      <span className="font-semibold">{p.name || p.username || "Parent"}</span>
-                      <span className="text-xs text-slate-500">{p.username || p.email || ""}</span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="text-xs text-slate-500">No parents found.</div>
+            <div className="relative">
+              <input
+                className="mt-2 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+                value={parentQuery}
+                onChange={(e) => {
+                  setParentQuery(e.target.value);
+                  setShowParentDropdown(true);
+                }}
+                onFocus={() => setShowParentDropdown(true)}
+                placeholder="Type parent name to search..."
+              />
+              {selectedParentName && (
+                <button
+                  type="button"
+                  onClick={clearParentSelection}
+                  className="absolute right-2 top-3 text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              )}
+              
+              {showParentDropdown && parentQuery && (
+                <div ref={parentDropdownRef} className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                  {filteredParents.length > 0 ? (
+                    filteredParents.map((p) => {
+                      const id = p._id || p.id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          onClick={() => handleParentSelect(p)}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{p.name || p.username}</span>
+                            <span className="text-xs text-slate-500">{p.username || p.email || ""}</span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-slate-500">No parents found</div>
+                  )}
+                </div>
               )}
             </div>
+            
+            {selectedParentName && (
+              <div className="mt-2 p-2 bg-green-50 rounded-lg text-sm text-green-800">
+                Selected: <strong>{selectedParentName}</strong>
+              </div>
+            )}
           </div>
         </div>
 

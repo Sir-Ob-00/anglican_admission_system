@@ -52,13 +52,35 @@ export async function listExams(req, res, next) {
     if (status) filter.status = safeTrim(status);
 
     if (req.user?.role === Roles.Teacher) {
-      const teacher = await Teacher.findOne({ user: req.user._id }).select("_id").lean();
-      if (!teacher) return res.json({ items: [] });
-      filter.$or = [{ supervisorTeacher: teacher._id }, { supervisorUser: req.user._id }];
+      const teacher = await Teacher.findOne({ user: req.user._id }).select("_id assignedClass").lean();
+      if (!teacher) {
+        console.log('Teacher not found for user:', req.user._id);
+        return res.json({ items: [] });
+      }
+      
+      console.log('Teacher found:', { teacherId: teacher._id, assignedClass: teacher.assignedClass });
+      
+      // Show exams for teacher's assigned class OR exams where teacher is supervisor
+      if (teacher.assignedClass) {
+        filter.$or = [
+          { classLevel: teacher.assignedClass },
+          { supervisorTeacher: teacher._id }, 
+          { supervisorUser: req.user._id }
+        ];
+        console.log('Filter with assignedClass:', filter.$or);
+      } else {
+        filter.$or = [{ supervisorTeacher: teacher._id }, { supervisorUser: req.user._id }];
+        console.log('Filter without assignedClass:', filter.$or);
+      }
     } else if (req.user?.role === Roles.AssistantHeadteacher) {
       filter.supervisorUser = req.user._id;
     }
     const items = await Exam.find(filter).sort({ createdAt: -1 }).lean();
+    console.log('Final filter:', JSON.stringify(filter, null, 2));
+    console.log('Found exams:', items.length);
+    items.forEach(exam => {
+      console.log(`- ${exam.title} (class: ${exam.classLevel}, status: ${exam.status})`);
+    });
     res.json({ items });
   } catch (e) {
     next(e);
@@ -452,6 +474,25 @@ export async function getQuestions(req, res, next) {
     const limit = Number(req.query.limit || 0);
     const shuffle = String(req.query.shuffle || "true") !== "false";
 
+    // Check if user has access to this exam
+    const exam = await Exam.findById(examId).lean();
+    if (!exam) return res.status(404).json({ message: "Exam not found" });
+
+    // For teachers, check if they have access to this exam
+    if (req.user?.role === Roles.Teacher) {
+      const teacher = await Teacher.findOne({ user: req.user._id }).select("_id assignedClass").lean();
+      if (!teacher) return res.status(403).json({ message: "Access denied" });
+      
+      const hasAccess = 
+        (teacher.assignedClass && exam.classLevel === teacher.assignedClass) || // Teacher's class exam
+        exam.supervisorTeacher?.toString() === teacher._id.toString() || // Teacher is supervisor
+        exam.supervisorUser?.toString() === req.user._id.toString(); // User is supervisor
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied: You don't have access to this exam's questions" });
+      }
+    }
+
     let items = await ExamQuestion.find({ exam: examId }).select("-correctIndex").lean();
     if (shuffle) items = items.sort(() => Math.random() - 0.5);
     if (limit > 0) items = items.slice(0, limit);
@@ -508,12 +549,39 @@ export async function submitExam(req, res, next) {
         applicant.paymentStatus = "none";
         await applicant.save();
 
+        // Notify parent
         await createNotification({
           userId: applicant.parentUser,
           applicantId: applicant._id,
           type: "exam",
-          message: "Exam completed and auto-graded. Awaiting review decision.",
+          message: `Exam completed. Score: ${percentage}% (${result.toUpperCase()}). Awaiting review decision.`,
         });
+
+        // Notify headteacher and assistant headteacher about exam completion
+        const headteachers = await User.find({ role: Roles.Headteacher }).select("_id").lean();
+        const assistantHeadteachers = await User.find({ role: Roles.AssistantHeadteacher }).select("_id").lean();
+        
+        const notificationMessage = `Exam submitted by ${fullName || applicant.fullName || 'Applicant'} - Score: ${percentage}% (${result.toUpperCase()})`;
+        
+        // Notify all headteachers
+        for (const ht of headteachers) {
+          await createNotification({
+            userId: ht._id,
+            applicantId: applicant._id,
+            type: "exam",
+            message: notificationMessage,
+          });
+        }
+        
+        // Notify all assistant headteachers
+        for (const aht of assistantHeadteachers) {
+          await createNotification({
+            userId: aht._id,
+            applicantId: applicant._id,
+            type: "exam",
+            message: notificationMessage,
+          });
+        }
       }
     }
 
@@ -525,6 +593,91 @@ export async function submitExam(req, res, next) {
     });
 
     res.status(201).json(examResult);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getExamResult(req, res, next) {
+  try {
+    const { applicantId } = req.query;
+    const examId = req.params.id;
+    
+    if (!applicantId) {
+      return res.status(400).json({ message: "applicantId is required" });
+    }
+
+    const result = await ExamResult.findOne({ 
+      exam: examId, 
+      applicant: applicantId 
+    })
+    .populate('exam', 'title passMark')
+    .lean();
+
+    if (!result) {
+      return res.status(404).json({ message: "Exam result not found" });
+    }
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function verifyTeacherAssignments(req, res, next) {
+  try {
+    console.log('\n=== TEACHER ASSIGNMENT VERIFICATION ===\n');
+    
+    // Find all teachers
+    const teachers = await Teacher.find({})
+      .populate('user', 'name username email role')
+      .lean();
+    
+    console.log('Found teachers:', teachers.length);
+    
+    for (const teacher of teachers) {
+      console.log(`\nTeacher: ${teacher.user?.name || 'Unknown'}`);
+      console.log(`- User ID: ${teacher.user?._id}`);
+      console.log(`- Teacher ID: ${teacher._id}`);
+      console.log(`- Assigned Class: ${teacher.assignedClass || 'NOT ASSIGNED'}`);
+      console.log(`- Staff ID: ${teacher.staffId || 'NOT SET'}`);
+      console.log(`- Subject: ${teacher.subject || 'NOT SET'}`);
+      
+      // Find exams for this teacher's class
+      if (teacher.assignedClass) {
+        const classExams = await Exam.find({ classLevel: teacher.assignedClass }).lean();
+        console.log(`- Exams for ${teacher.assignedClass}: ${classExams.length}`);
+        classExams.forEach(exam => {
+          console.log(`  * ${exam.title} (${exam.classLevel}) - ${exam.status}`);
+        });
+      }
+    }
+    
+    console.log('\n=== EXAM SUMMARY ===\n');
+    
+    // Summary by class
+    const examSummary = await Exam.aggregate([
+      {
+        $group: {
+          _id: '$classLevel',
+          count: { $sum: 1 },
+          exams: { $push: '$title' }
+        }
+      }
+    ]);
+    
+    examSummary.forEach(summary => {
+      console.log(`Class ${summary._id}: ${summary.count} exams`);
+      summary.exams.forEach(exam => {
+        console.log(`  - ${exam}`);
+      });
+    });
+    
+    res.json({ 
+      teachers: teachers.length,
+      examSummary,
+      message: "Check console logs for detailed verification"
+    });
   } catch (e) {
     next(e);
   }

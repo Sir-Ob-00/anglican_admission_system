@@ -51,6 +51,25 @@ export async function approveAdmission({ applicantId, approvedBy, classAssigned 
     fullName: applicant.fullName,
     classAssigned: classAssigned || undefined,
     parentUser: applicant.parentUser,
+    
+    // Personal information from applicant
+    dateOfBirth: applicant.dateOfBirth,
+    gender: applicant.gender,
+    admittedClass: classAssigned?.name || applicant.classApplyingFor,
+    
+    // Parent information from applicant
+    parentContact: applicant.parentContact || (applicant.parentUser?.contact || ''),
+    parentName: applicant.parentName || (applicant.parentUser?.name || ''),
+    address: applicant.address || '',
+    
+    // Location information (default empty - to be filled later)
+    homeTown: '',
+    currentLocation: '',
+    nationality: '',
+    region: '',
+    
+    // Profile picture (default empty)
+    profilePicture: '',
   });
 
   return { admission, applicant };

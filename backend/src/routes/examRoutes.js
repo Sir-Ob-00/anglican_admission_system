@@ -8,6 +8,7 @@ import {
   createExam,
   decideExamResult,
   getExam,
+  getExamResult,
   getQuestions,
   listExams,
   recommendExamResult,
@@ -16,16 +17,17 @@ import {
   publishEntranceExam,
   submitExam,
   updateExam,
+  verifyTeacherAssignments,
 } from "../controllers/examController.js";
 
 const router = Router();
 
 router.use(authMiddleware);
 
-router.post("/", requireRoles(Roles.Headteacher), createExam);
+router.post("/", requireRoles(Roles.Headteacher, Roles.Teacher), createExam);
 router.get("/", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Teacher), listExams);
 router.get("/:id", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Teacher), getExam);
-router.put("/:id", requireRoles(Roles.Headteacher), updateExam);
+router.put("/:id", requireRoles(Roles.Headteacher, Roles.Teacher), updateExam);
 router.put(
   "/:id/supervisor",
   requireRoles(Roles.Headteacher, Roles.AssistantHeadteacher),
@@ -73,10 +75,14 @@ router.post(
   teacherAssessExamResult
 );
 
+router.get("/:id/result", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Teacher, Roles.Parent), getExamResult);
 router.post(
   "/submit",
   requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Teacher, Roles.Parent),
   submitExam
 );
+
+// Debug endpoint for verification
+router.get("/verify-assignments", requireRoles(Roles.Admin, Roles.Headteacher), verifyTeacherAssignments);
 
 export default router;

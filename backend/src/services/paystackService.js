@@ -19,9 +19,10 @@ export async function initializePaystackPayment({ email, amount, reference, meta
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
       {
         email,
-        amount: amount * 100, // Paystack expects amount in kobo (cents)
+        amount: amount * 100, // Paystack expects amount in pesewas (cents) for GHS
         reference,
         metadata,
+        currency: 'GHS', // Ghana Cedis
         callback_url: `${env.frontendUrl}/payment/callback`,
       },
       {

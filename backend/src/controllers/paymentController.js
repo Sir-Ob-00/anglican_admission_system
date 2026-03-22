@@ -41,7 +41,7 @@ export async function initializeAdmissionPayment(req, res, next) {
     const reference = generatePaymentReference();
     
     // Admission fee amount (can be moved to config)
-    const amount = 50000; // 500.00 in local currency
+    const amount = 50000; // 500.00 Ghana Cedis (GHS)
 
     // Initialize Paystack payment
     const paystackResponse = await initializePaystackPayment({
@@ -200,7 +200,7 @@ export async function verifyManualPaymentSubmission(req, res, next) {
         applicantId: submission.applicantId._id,
         parentId: submission.applicantId.parentUser,
         reference: submission.reference,
-        amount: 50000, // Default amount
+        amount: 50000, // Default amount in Ghana Cedis (GHS)
         status: 'paid',
         verified: true,
         method: 'paystack',
@@ -305,40 +305,7 @@ export async function listPayments(req, res, next) {
   }
 }
 
-export async function initiate(req, res, next) {
-  try {
-    const missing = requireFields(req.body, ["applicantId", "amount"]);
-    if (missing.length) return res.status(400).json({ message: `Missing: ${missing.join(", ")}` });
-
-    const payment = await initiatePayment({
-      applicantId: req.body.applicantId,
-      amount: Number(req.body.amount),
-      method: req.body.method || "bank_transfer",
-      initiatedBy: req.user?._id,
-      initiatedByRole: req.user?.role,
-    });
-
-    const applicant = await Applicant.findById(req.body.applicantId).lean();
-    await createNotification({
-      userId: applicant?.parentUser,
-      applicantId: applicant?._id,
-      type: "payment",
-      message: "Payment request initiated. Please complete payment.",
-    });
-
-    await logActivity({ userId: req.user?._id, action: "Initiated payment", ipAddress: req.ip, meta: { paymentId: payment._id } });
-    res.status(201).json(payment);
-  } catch (e) {
-    const msg = String(e?.message || "");
-    if (msg.toLowerCase().includes("payment can only be initiated")) {
-      return res.status(400).json({ message: msg });
-    }
-    if (msg.toLowerCase().includes("applicant not found")) {
-      return res.status(404).json({ message: msg });
-    }
-    next(e);
-  }
-}
+// REMOVED: initiate function - Parents now initiate payments directly via Paystack
 
 export async function verify(req, res, next) {
   try {

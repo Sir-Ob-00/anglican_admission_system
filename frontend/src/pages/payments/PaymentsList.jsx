@@ -9,7 +9,7 @@ import * as paymentService from "../../services/paymentService";
 
 function money(n) {
   if (typeof n !== "number") return "--";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "NGN" }).format(n);
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "GHS" }).format(n);
 }
 
 export default function PaymentsList() {
@@ -140,17 +140,7 @@ export default function PaymentsList() {
       <PageHeader
         title="Payments"
         subtitle="Track and manage admission fee payments."
-        right={
-          role === "assistantHeadteacher" || role === "headteacher" ? (
-            <button
-              type="button"
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-5 text-sm font-semibold text-white shadow-sm hover:brightness-110"
-              onClick={() => navigate("/payments/initiate")}
-            >
-              Initiate Payment
-            </button>
-          ) : null
-        }
+        right={null}
       />
       <Table title="Payments List" rows={rows} columns={columns} />
     </div>

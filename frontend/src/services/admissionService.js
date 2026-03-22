@@ -30,3 +30,19 @@ export async function downloadAdmissionConfirmation(applicantId) {
   });
   return res.data;
 }
+
+// Student management functions
+export async function getStudentDetails(studentId) {
+  const res = await api.get(`/api/admissions/students/${studentId}`);
+  return res.data;
+}
+
+export async function updateStudent(studentId, updates) {
+  const res = await api.put(`/api/admissions/students/${studentId}`, updates);
+  return res.data;
+}
+
+export async function deleteStudent(studentId) {
+  const res = await api.delete(`/api/admissions/students/${studentId}`);
+  return res.data;
+}

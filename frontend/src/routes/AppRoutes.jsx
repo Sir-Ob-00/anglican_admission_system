@@ -16,10 +16,13 @@ import ApplicantDetails from "../pages/applicants/ApplicantDetails";
 import ApplicantReview from "../pages/applicants/ApplicantReview";
 import AdmissionsList from "../pages/admissions/AdmissionsList";
 import AdmissionDetails from "../pages/admissions/AdmissionDetails";
+import StudentDetails from "../pages/admissions/StudentDetails";
 import ExamsList from "../pages/exams/ExamsList";
+import EditExam from "../pages/exams/EditExam";
 import ExamQuestions from "../pages/exams/ExamQuestions";
 import ExamResults from "../pages/exams/ExamResults";
 import TakeExam from "../pages/exams/TakeExam";
+import ExamScoreView from "../pages/exams/ExamScoreView";
 import EnterExamScores from "../pages/exams/EnterExamScores";
 import PaymentsList from "../pages/payments/PaymentsList";
 import PaymentSubmissions from "../pages/payments/PaymentSubmissions";
@@ -36,6 +39,7 @@ import BackupSystem from "../pages/settings/BackupSystem";
 import ActivityLogs from "../pages/settings/ActivityLogs";
 import StudentsList from "../pages/students/StudentsList";
 import NotFound from "../pages/NotFound";
+import CameraTest from "../pages/test/CameraTest";
 import { roleHomePath } from "../utils/helpers";
 
 function Home() {
@@ -118,12 +122,15 @@ export default function AppRoutes() {
 
             <Route path="/admissions" element={<AdmissionsList />} />
             <Route path="/admissions/:id" element={<AdmissionDetails />} />
+            <Route path="/admissions/students/:id" element={<StudentDetails />} />
 
             <Route path="/exams" element={<ExamsList />} />
             <Route path="/exams/scores" element={<EnterExamScores />} />
+            <Route path="/exams/:id/edit" element={<EditExam />} />
             <Route path="/exams/:id/questions" element={<ExamQuestions />} />
             <Route path="/exams/:id/results" element={<ExamResults />} />
             <Route path="/exams/:id/take" element={<TakeExam />} />
+            <Route path="/exams/:id/score" element={<ExamScoreView />} />
 
             <Route path="/payments" element={<PaymentsList />} />
             <Route path="/payments/submissions" element={<PaymentSubmissions />} />
@@ -146,6 +153,7 @@ export default function AppRoutes() {
           </Route>
         </Route>
 
+        <Route path="/test/camera" element={<CameraTest />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

@@ -99,7 +99,10 @@ export default function TakeExam() {
         answers,
       });
       localStorage.setItem(storageKey, "1");
-      navigate(`/exams/${id}/results`, { replace: true });
+      const searchParams = new URLSearchParams();
+      if (applicantId) searchParams.set("applicantId", applicantId);
+      if (fullName) searchParams.set("fullName", fullName);
+      navigate(`/exams/${id}/score?${searchParams.toString()}`, { replace: true });
     } catch (e) {
       submitOnce.current = false;
       setSubmitError(e?.response?.data?.message || "Submission failed. Please try again.");
@@ -129,9 +132,14 @@ export default function TakeExam() {
           <button
             type="button"
             className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-5 text-sm font-semibold text-white shadow-sm hover:brightness-110"
-            onClick={() => navigate(`/exams/${id}/results`)}
+            onClick={() => {
+              const searchParams = new URLSearchParams();
+              if (applicantId) searchParams.set("applicantId", applicantId);
+              if (fullName) searchParams.set("fullName", fullName);
+              navigate(`/exams/${id}/score?${searchParams.toString()}`);
+            }}
           >
-            View results
+            View Score
           </button>
         </Panel>
       ) : loadError ? (

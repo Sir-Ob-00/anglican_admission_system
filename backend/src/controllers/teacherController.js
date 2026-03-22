@@ -23,6 +23,7 @@ export async function create(req, res, next) {
       user: req.body.user,
       staffId: req.body.staffId ? safeTrim(req.body.staffId) : undefined,
       subject: req.body.subject ? safeTrim(req.body.subject) : undefined,
+      assignedClass: req.body.assignedClass ? safeTrim(req.body.assignedClass) : undefined,
     });
     res.status(201).json(teacher);
   } catch (e) {
@@ -36,6 +37,7 @@ export async function update(req, res, next) {
     if (!teacher) return res.status(404).json({ message: "Teacher not found" });
     if (req.body.staffId != null) teacher.staffId = safeTrim(req.body.staffId);
     if (req.body.subject != null) teacher.subject = safeTrim(req.body.subject);
+    if (req.body.assignedClass != null) teacher.assignedClass = safeTrim(req.body.assignedClass);
     await teacher.save();
     res.json(teacher);
   } catch (e) {

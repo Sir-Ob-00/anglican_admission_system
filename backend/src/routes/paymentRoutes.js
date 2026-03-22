@@ -4,7 +4,6 @@ import { requireRoles } from "../middleware/roleMiddleware.js";
 import { Roles } from "../utils/roles.js";
 import { 
   downloadReceipt, 
-  initiate, 
   listPayments, 
   verify,
   // NEW PAYSTACK ENDPOINTS
@@ -50,29 +49,27 @@ router.get(
   getAdmissionPayments
 );
 
-// LEGACY PAYMENT ROUTES (KEEP FOR BACKWARDS COMPATIBILITY)
+// LEGACY PAYMENT ROUTES (REMOVED - Parents now pay directly via Paystack)
 
+// Get all payments (legacy - for admin reporting)
 router.get(
   "/",
   requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Parent),
   listPayments
 );
 
-// Spec endpoints
-router.post("/initiate", requireRoles(Roles.Headteacher, Roles.AssistantHeadteacher), initiate);
+// Verify payment (legacy - for manual verification)
 router.post(
   "/verify",
   requireRoles(Roles.AssistantHeadteacher, Roles.Headteacher, Roles.Parent),
   verify
 );
 
+// Download receipt (legacy)
 router.get(
   "/:id/receipt",
   requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher, Roles.Parent),
   downloadReceipt
 );
-
-// Frontend-friendly alias
-router.post("/", requireRoles(Roles.Headteacher, Roles.AssistantHeadteacher), initiate);
 
 export default router;

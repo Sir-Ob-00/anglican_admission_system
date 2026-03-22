@@ -24,6 +24,7 @@ export default function TeachersList() {
   const [userId, setUserId] = useState("");
   const [staffId, setStaffId] = useState("");
   const [subject, setSubject] = useState("");
+  const [assignedClass, setAssignedClass] = useState("");
 
   async function refresh() {
     const data = await listTeachers();
@@ -48,6 +49,7 @@ export default function TeachersList() {
     () => [
       { key: "name", header: "Teacher", render: (r) => r.user?.name || r.name },
       { key: "subject", header: "Subject", render: (r) => r.subject || r.user?.subject || "—" },
+      { key: "assignedClass", header: "Class", render: (r) => r.assignedClass || "—" },
       {
         key: "status",
         header: "Status",
@@ -72,6 +74,7 @@ export default function TeachersList() {
                     setUserId(r.user?._id || r.user || "");
                     setStaffId(r.staffId || "");
                     setSubject(r.subject || "");
+                    setAssignedClass(r.assignedClass || "");
                     setEditOpen(true);
                   }}
                 >
@@ -229,9 +232,9 @@ export default function TeachersList() {
               onClick={async () => {
                 try {
                   if (editing) {
-                    await updateTeacher(editing._id || editing.id, { staffId, subject });
+                    await updateTeacher(editing._id || editing.id, { staffId, subject, assignedClass });
                   } else {
-                    await createTeacher({ user: userId, staffId, subject });
+                    await createTeacher({ user: userId, staffId, subject, assignedClass });
                   }
                   await refresh();
                   setEditOpen(false);
@@ -281,6 +284,15 @@ export default function TeachersList() {
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="e.g., Math"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-slate-800">Assigned Class</label>
+            <input
+              className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
+              value={assignedClass}
+              onChange={(e) => setAssignedClass(e.target.value)}
+              placeholder="e.g., JHS1A, JHS1B"
             />
           </div>
         </div>

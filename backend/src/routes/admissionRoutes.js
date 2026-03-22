@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { requireRoles } from "../middleware/roleMiddleware.js";
 import { Roles } from "../utils/roles.js";
-import { approve, downloadConfirmation, get, list, reject } from "../controllers/admissionController.js";
+import { approve, downloadConfirmation, get, list, reject, updateStudent, deleteStudent, getStudentDetails } from "../controllers/admissionController.js";
 
 const router = Router();
 
@@ -17,5 +17,8 @@ router.get(
   downloadConfirmation
 );
 router.get("/:id", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher), get);
+router.put("/students/:id", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher), updateStudent);
+router.delete("/students/:id", requireRoles(Roles.Admin, Roles.Headteacher), deleteStudent);
+router.get("/students/:id", requireRoles(Roles.Admin, Roles.Headteacher, Roles.AssistantHeadteacher), getStudentDetails);
 
 export default router;

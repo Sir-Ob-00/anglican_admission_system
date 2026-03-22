@@ -49,3 +49,10 @@ export async function submitExam(payload) {
   const res = await api.post("/api/exams/submit", payload);
   return res.data;
 }
+
+export async function getExamResult(examId, applicantId) {
+  const res = await api.get(`/api/exams/${examId}/result`, { 
+    params: { applicantId } 
+  });
+  return res.data;
+}

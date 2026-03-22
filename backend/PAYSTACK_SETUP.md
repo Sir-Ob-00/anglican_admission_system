@@ -86,6 +86,10 @@ JWT_EXPIRES_IN=1d
 PAYSTACK_SECRET_KEY=sk_test_your_paystack_secret_key_here
 FRONTEND_URL=http://localhost:5173
 
+# Currency Configuration
+CURRENCY=GHS # Ghana Cedis
+ADMISSION_FEE=50000 # ₵500.00 in pesewas
+
 # Other Configuration
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=300
@@ -128,10 +132,16 @@ npm install
 
 ### 3. Payment Features
 - **Real-time Status**: Payment status updates automatically
-- **Secure Processing**: All payments handled by Paystack
+- **Secure Processing**: All payments handled by Paystack in Ghana Cedis (GHS)
 - **Duplicate Prevention**: Unique references prevent double payments
 - **Manual Fallback**: Staff can verify manual payment submissions
 - **Email Notifications**: Automatic payment confirmations
+
+### 4. Payment Amounts & Fees
+- **Admission Fee**: ₵500.00 (Ghana Cedis)
+- **Paystack Fees**: Handled by Paystack (varies by payment method)
+- **Currency**: Ghana Cedis (GHS)
+- **Amount in Pesewas**: Backend multiplies by 100 for Paystack API
 
 ## 🎯 Role-Based Features
 
@@ -302,7 +312,7 @@ The parent dashboard includes debug information to help troubleshoot payment iss
 ## 💳 Paystack Test Cards
 
 ### Development Testing
-Use these Paystack test cards for development:
+Use these Paystack test cards for development (work with Ghana Cedis GHS):
 - **Success Card**: `4084084084084081`
 - **Failure Card**: `4084084084084082`
 - **3DS Card**: `5060666666666666666`

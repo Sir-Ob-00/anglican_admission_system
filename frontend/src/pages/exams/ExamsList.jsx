@@ -59,6 +59,7 @@ export default function ExamsList() {
         render: (r) => {
           const examId = r._id || r.id;
           const canPublish = (role === "teacher" || role === "assistantHeadteacher") && r.status !== "active";
+          const canEdit = (role === "teacher" || role === "assistantHeadteacher") && (r.status === "draft" || r.status === "scheduled" || r.status === "active");
           return (
             <div className="flex flex-wrap items-center gap-2">
               {(role === "teacher" || role === "assistantHeadteacher") && r.code && r.status === "active" ? (
@@ -90,6 +91,18 @@ export default function ExamsList() {
                   }}
                 >
                   Publish
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center justify-center rounded-2xl bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/exams/${examId}/edit`);
+                  }}
+                >
+                  Edit
                 </button>
               ) : null}
             <button
@@ -126,7 +139,7 @@ export default function ExamsList() {
         title="Entrance Exams"
         subtitle="Schedule, conduct, and review entrance exams."
         right={
-          role === "headteacher" ? (
+          role === "headteacher" || role === "teacher" ? (
             <button
               type="button"
               className="inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-5 text-sm font-semibold text-white shadow-sm hover:brightness-110"

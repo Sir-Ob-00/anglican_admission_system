@@ -7,9 +7,11 @@ import Modal from "../../components/common/Modal";
 import { formatDate } from "../../utils/helpers";
 import * as admissionService from "../../services/admissionService";
 import { listStudents } from "../../services/studentService";
+import { useAuth } from "../../context/AuthContext";
 
 export default function AdmissionsList() {
   const navigate = useNavigate();
+  const { role } = useAuth();
   const [rows, setRows] = useState([]);
   const [studentsByApplicant, setStudentsByApplicant] = useState(new Map());
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -61,19 +63,71 @@ export default function AdmissionsList() {
       {
         key: "actions",
         header: "Actions",
-        render: (r) => (
-          <button
-            type="button"
-            className="inline-flex h-9 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-3 text-xs font-semibold text-white hover:brightness-110"
-            onClick={(e) => {
-              e.stopPropagation();
-              const student = studentsByApplicant.get(String(r.applicantId || ""));
-              if (student) setSelectedStudent(student);
-            }}
-          >
-            View Student
-          </button>
-        ),
+        render: (r) => {
+          const student = studentsByApplicant.get(String(r.applicantId || ""));
+          const canEdit = role === 'admin' || role === 'headteacher' || role === 'assistantHeadteacher';
+          const canDelete = role === 'admin' || role === 'headteacher';
+          
+          return (
+            <div className="flex gap-2">
+              {student && (
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center justify-center rounded-2xl bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/admissions/students/${student._id}`);
+                  }}
+                >
+                  Edit Student
+                </button>
+              )}
+              {student && canDelete && (
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center justify-center rounded-2xl bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Are you sure you want to delete ${student.fullName}? This action cannot be undone.`)) {
+                      try {
+                        await admissionService.deleteStudent(student._id);
+                        alert('Student deleted successfully!');
+                        // Refresh the list
+                        const [admissionsRes, studentsRes] = await Promise.all([
+                          admissionService.listAdmissions(),
+                          listStudents(),
+                        ]);
+                        const items = Array.isArray(admissionsRes) ? admissionsRes : admissionsRes.items || [];
+                        const students = Array.isArray(studentsRes) ? studentsRes : studentsRes.items || [];
+                        setRows(items);
+                        const map = new Map();
+                        for (const s of students) {
+                          if (s.applicant) map.set(String(s.applicant), s);
+                        }
+                        setStudentsByApplicant(map);
+                      } catch (error) {
+                        alert('Failed to delete student: ' + (error?.response?.data?.message || error.message));
+                      }
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-3 text-xs font-semibold text-white hover:brightness-110"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const student = studentsByApplicant.get(String(r.applicantId || ""));
+                  if (student) setSelectedStudent(student);
+                }}
+              >
+                View Details
+              </button>
+            </div>
+          );
+        },
       },
     ],
     [studentsByApplicant]
