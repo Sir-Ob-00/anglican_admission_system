@@ -45,3 +45,14 @@ model ActivityLog {
   // Relation to User
   user User @relation(fields: [userId], references: [id])
 }
+
+
+
+// otp model for mfa
+model OTP {
+  id        String   @id @default(uuid())
+  email    String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

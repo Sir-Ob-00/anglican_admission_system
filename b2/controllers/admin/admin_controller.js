@@ -19,7 +19,7 @@ const createUserController = async (req, res, next) => {
 
         if (existingUser) {
             logger.error(`Create user error: User with email ${email} already exists`);
-            throw new AppError('User with this email already exists', 400);
+            next(new AppError('User with this email already exists', 400));
         }
 
         // hashing the password and creating the user
@@ -35,6 +35,16 @@ const createUserController = async (req, res, next) => {
                 mfa_enabled
             }
         });
+
+        // adding an entry to the activity log
+        await prisma.activityLog.create({
+            data: {
+                userId: req.user.id,
+                action: `created user with email ${email}`,
+                timestamp: new Date()
+            }
+        });
+
 
         // excluding password from the user object before sending the response
         delete newUser.password;

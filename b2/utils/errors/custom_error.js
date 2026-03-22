@@ -10,6 +10,7 @@ const customError = (err, req, res, next) => {
 
     // Error response object
     const errorResponse = {
+        "success": false,
         status: statusCode,
         message: message,
         isOperational: isOperational

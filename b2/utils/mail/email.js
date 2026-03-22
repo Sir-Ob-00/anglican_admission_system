@@ -24,6 +24,13 @@ const mailOptions = (to, subject, text) => {
 
     // Including text in HTML format for better email formatting
     const html = `<p>${text}</p>`;
+
+    // checking if the to parameter is an array or not
+    if (Array.isArray(to)) {
+        to = to.join(', ');
+    }
+
+
     return {
         from: process.env.EMAIL_USER,
         to: to,
