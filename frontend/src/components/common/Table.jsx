@@ -10,6 +10,8 @@ export default function Table({
   initialPageSize = 10,
   onRowClick,
   actions,
+  loading = false,
+  loadingText = "Loading...",
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -64,7 +66,19 @@ export default function Table({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200/60">
-            {slice.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-8 text-center text-slate-600">
+                  <div className="flex items-center justify-center gap-3">
+                    <span
+                      className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-[color:var(--brand)]"
+                      aria-hidden="true"
+                    />
+                    <span>{loadingText}</span>
+                  </div>
+                </td>
+              </tr>
+            ) : slice.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-8 text-center text-slate-600">
                   No results.

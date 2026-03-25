@@ -10,6 +10,9 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const isExamWindow =
+    /^\/exams\/[^/]+\/take$/.test(location.pathname) ||
+    /^\/exams\/session\/[^/]+\/take$/.test(location.pathname);
 
   useEffect(() => {
     if (location.state?.loggedIn) {
@@ -20,15 +23,19 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-full">
-      <div className="mx-auto flex min-h-full w-full max-w-[1400px] gap-4 px-3 py-3 md:px-4 md:py-4">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div
+        className={`mx-auto flex min-h-full w-full gap-4 ${
+          isExamWindow ? "max-w-none px-0 py-0" : "max-w-[1400px] px-3 py-3 md:px-4 md:py-4"
+        }`}
+      >
+        {!isExamWindow ? <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} /> : null}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <Navbar onToggleSidebar={() => setSidebarOpen((s) => !s)} />
-          <main className="mt-4 min-w-0 flex-1">
+          {!isExamWindow ? <Navbar onToggleSidebar={() => setSidebarOpen((s) => !s)} /> : null}
+          <main className={`${isExamWindow ? "min-w-0 flex-1" : "mt-4 min-w-0 flex-1"}`}>
             <Outlet />
           </main>
-          <Footer />
+          {!isExamWindow ? <Footer /> : null}
         </div>
       </div>
 

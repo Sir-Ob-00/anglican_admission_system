@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../../components/common/PageHeader";
 import Panel from "../../components/common/Panel";
 import Badge from "../../components/common/Badge";
-import { getExam, getExamQuestions, submitExam } from "../../services/examService";
+import { getHeadteacherExam, submitHeadteacherExam } from "../../services/examService";
+import {
+  getTeacherExamSession,
+  heartbeatTeacherExamSession,
+  submitTeacherExamSession,
+} from "../../services/teacherExamService";
 
 function secondsToClock(s) {
   const m = Math.floor(s / 60);
@@ -11,57 +16,107 @@ function secondsToClock(s) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+function extractExamRecord(result) {
+  return result?.exam || result?.data?.exam || result?.data || result?.item || result;
+}
+
+function extractMarkRecord(result) {
+  return result?.mark || result?.data?.mark || result?.data || result?.item || result;
+}
+
 export default function TakeExam() {
-  const { id } = useParams();
+  const { id, sessionId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const storageKey = `aas_exam_submitted_${id}`;
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const kioskMode = searchParams.get("kiosk") === "1";
+  const presetApplicantId = searchParams.get("applicantId") || "";
+  const presetFullName = searchParams.get("fullName") || "";
+  const activeExamId = id || "";
+  const activeSessionId = sessionId || "";
+  const storageKey = activeSessionId
+    ? `aas_exam_session_submitted_${activeSessionId}`
+    : `aas_exam_submitted_${activeExamId}`;
   const alreadySubmitted = localStorage.getItem(storageKey) === "1";
 
   const [exam, setExam] = useState(null);
+  const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [applicantId, setApplicantId] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [applicantId, setApplicantId] = useState(presetApplicantId);
+  const [fullName, setFullName] = useState(presetFullName);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState(() => ({}));
   const [secondsLeft, setSecondsLeft] = useState(15 * 60);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [securityEvents, setSecurityEvents] = useState([]);
+  const [securityMeta, setSecurityMeta] = useState({ fingerprint: "", ipAddress: "" });
   const submitOnce = useRef(false);
 
   useEffect(() => {
+    setApplicantId(presetApplicantId);
+    setFullName(presetFullName);
+  }, [presetApplicantId, presetFullName]);
+
+  useEffect(() => {
     let ignore = false;
+
     (async () => {
       try {
         setLoadError("");
         setSubmitError("");
-        const [ex, qs] = await Promise.all([getExam(id), getExamQuestions(id, { shuffle: true })]);
-        const items = Array.isArray(qs) ? qs : qs.items || [];
+
+        if (activeSessionId) {
+          const data = await getTeacherExamSession(activeSessionId);
+          const nextSession = data?.session || null;
+          const nextExam = data?.exam || null;
+          const items = Array.isArray(nextExam?.questions) ? nextExam.questions : [];
+
+          if (ignore) return;
+
+          setSession(nextSession);
+          setExam(nextExam);
+          setQuestions(items);
+          setIndex(0);
+          if (nextSession?.applicantId) setApplicantId(nextSession.applicantId);
+          if (nextSession?.fullName) setFullName(nextSession.fullName);
+          setSecondsLeft(Number(nextExam?.duration || 15) * 60);
+          if (!items.length) setLoadError("No questions found for this exam session.");
+          return;
+        }
+
+        const rawExam = await getHeadteacherExam(activeExamId);
+        const ex = extractExamRecord(rawExam);
+        const items = Array.isArray(ex?.questions) ? ex.questions : [];
+
         if (ignore) return;
+
+        setSession(null);
         setExam(ex || null);
         setQuestions(items);
         setIndex(0);
-        const duration = Number(ex?.durationMinutes || 15);
-        setSecondsLeft(duration * 60);
+        setSecondsLeft(Number(ex?.duration || ex?.durationMinutes || 15) * 60);
         if (!items.length) setLoadError("No questions found for this exam.");
-      } catch {
+      } catch (error) {
         if (!ignore) {
           setExam(null);
+          setSession(null);
           setQuestions([]);
-          setLoadError("Failed to load this exam. Check your backend API.");
+          setLoadError(error?.response?.data?.message || "Failed to load this exam.");
         }
       }
     })();
+
     return () => {
       ignore = true;
     };
-  }, [id]);
+  }, [activeExamId, activeSessionId]);
 
   useEffect(() => {
-    if (alreadySubmitted) return;
+    if (alreadySubmitted) return undefined;
     const onBeforeUnload = (e) => {
       e.preventDefault();
-      // Triggers the native confirm dialog (browsers ignore custom text).
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -69,40 +124,180 @@ export default function TakeExam() {
   }, [alreadySubmitted]);
 
   useEffect(() => {
-    if (alreadySubmitted) return;
-    if (!questions.length) return;
-    const t = window.setInterval(() => {
+    if (alreadySubmitted || !questions.length) return undefined;
+    const timer = window.setInterval(() => {
       setSecondsLeft((s) => Math.max(0, s - 1));
     }, 1000);
-    return () => window.clearInterval(t);
+    return () => window.clearInterval(timer);
   }, [alreadySubmitted, questions.length]);
 
   useEffect(() => {
-    if (alreadySubmitted) return;
-    if (secondsLeft !== 0) return;
+    if (alreadySubmitted || secondsLeft !== 0) return;
     void handleSubmit("Time elapsed");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, alreadySubmitted]);
 
+  useEffect(() => {
+    if (!kioskMode) return undefined;
+
+    const fingerprint = [
+      navigator.userAgent,
+      navigator.language,
+      window.screen.width,
+      window.screen.height,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      navigator.hardwareConcurrency || "na",
+    ].join("|");
+
+    setSecurityMeta((prev) => ({ ...prev, fingerprint }));
+
+    const requestFullscreen = async () => {
+      try {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch {
+        // Best effort only.
+      }
+    };
+
+    void requestFullscreen();
+
+    const logEvent = (message) => {
+      setSecurityEvents((prev) => {
+        if (prev.includes(message)) return prev;
+        return [...prev, message].slice(-5);
+      });
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        logEvent("Tab switching detected");
+      }
+    };
+
+    const blockContextMenu = (event) => {
+      event.preventDefault();
+      logEvent("Right-click was blocked");
+    };
+
+    const blockClipboard = (event) => {
+      event.preventDefault();
+      logEvent(`${event.type} was blocked`);
+    };
+
+    const blockKeys = (event) => {
+      const key = String(event.key || "").toLowerCase();
+      const ctrlOrMeta = event.ctrlKey || event.metaKey;
+      if ((ctrlOrMeta && ["c", "v", "x", "p", "s", "u"].includes(key)) || key === "f12") {
+        event.preventDefault();
+        logEvent("Restricted keyboard shortcut blocked");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("contextmenu", blockContextMenu);
+    document.addEventListener("copy", blockClipboard);
+    document.addEventListener("cut", blockClipboard);
+    document.addEventListener("paste", blockClipboard);
+    window.addEventListener("keydown", blockKeys);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("contextmenu", blockContextMenu);
+      document.removeEventListener("copy", blockClipboard);
+      document.removeEventListener("cut", blockClipboard);
+      document.removeEventListener("paste", blockClipboard);
+      window.removeEventListener("keydown", blockKeys);
+    };
+  }, [kioskMode]);
+
+  useEffect(() => {
+    if (!kioskMode) return undefined;
+    let ignore = false;
+
+    (async () => {
+      try {
+        const response = await fetch("https://api.ipify.org?format=json");
+        const data = await response.json();
+        if (!ignore) {
+          setSecurityMeta((prev) => ({ ...prev, ipAddress: data?.ip || "" }));
+        }
+      } catch {
+        if (!ignore) {
+          setSecurityMeta((prev) => ({ ...prev, ipAddress: "Unavailable" }));
+        }
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [kioskMode]);
+
+  useEffect(() => {
+    if (!activeSessionId || !kioskMode || alreadySubmitted) return undefined;
+
+    const sendHeartbeat = async () => {
+      try {
+        await heartbeatTeacherExamSession(activeSessionId, {
+          visibilityState: document.visibilityState,
+          fullscreen: Boolean(document.fullscreenElement),
+          ipAddress: securityMeta.ipAddress,
+          fingerprint: securityMeta.fingerprint,
+          events: securityEvents,
+        });
+      } catch {
+        // Keep exam flow uninterrupted if heartbeat fails.
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void sendHeartbeat();
+    }, 15000);
+
+    return () => window.clearInterval(interval);
+  }, [activeSessionId, kioskMode, alreadySubmitted, securityEvents, securityMeta]);
+
   async function handleSubmit(reason) {
-    if (submitOnce.current) return;
-    if (!questions.length) return;
+    if (submitOnce.current || !questions.length) return;
     submitOnce.current = true;
     setSubmitting(true);
     setSubmitError("");
+
     try {
-      await submitExam({
-        examId: id,
-        reason,
-        applicantId: applicantId || undefined,
-        fullName: fullName || undefined,
-        answers,
-      });
+      let response;
+
+      if (activeSessionId) {
+        response = await submitTeacherExamSession(activeSessionId, {
+          examId: exam?.id || session?.examId || activeExamId,
+          applicantId: applicantId || session?.applicantId,
+          answers,
+          securityMeta: {
+            ipAddress: securityMeta.ipAddress,
+            fingerprint: securityMeta.fingerprint,
+            events: securityEvents,
+          },
+        });
+      } else {
+        response = await submitHeadteacherExam(activeExamId, {
+          examId: activeExamId,
+          reason,
+          applicantId: applicantId || undefined,
+          answers,
+        });
+      }
+
+      const mark = extractMarkRecord(response);
       localStorage.setItem(storageKey, "1");
-      const searchParams = new URLSearchParams();
-      if (applicantId) searchParams.set("applicantId", applicantId);
-      if (fullName) searchParams.set("fullName", fullName);
-      navigate(`/exams/${id}/score?${searchParams.toString()}`, { replace: true });
+
+      const nextSearchParams = new URLSearchParams();
+      if (applicantId) nextSearchParams.set("applicantId", applicantId);
+      if (fullName) nextSearchParams.set("fullName", fullName);
+
+      navigate(`/exams/${exam?.id || session?.examId || activeExamId}/score?${nextSearchParams.toString()}`, {
+        replace: true,
+        state: { result: mark, securityMeta, securityEvents },
+      });
     } catch (e) {
       submitOnce.current = false;
       setSubmitError(e?.response?.data?.message || "Submission failed. Please try again.");
@@ -129,18 +324,6 @@ export default function TakeExam() {
         <Panel className="p-6">
           <div className="font-display text-xl font-semibold text-slate-900">Already submitted</div>
           <div className="mt-2 text-sm text-slate-600">Multiple submissions are blocked for this exam attempt.</div>
-          <button
-            type="button"
-            className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-5 text-sm font-semibold text-white shadow-sm hover:brightness-110"
-            onClick={() => {
-              const searchParams = new URLSearchParams();
-              if (applicantId) searchParams.set("applicantId", applicantId);
-              if (fullName) searchParams.set("fullName", fullName);
-              navigate(`/exams/${id}/score?${searchParams.toString()}`);
-            }}
-          >
-            View Score
-          </button>
         </Panel>
       ) : loadError ? (
         <Panel className="p-6">
@@ -157,14 +340,21 @@ export default function TakeExam() {
       ) : (
         <div className="grid gap-3 lg:grid-cols-3">
           <Panel className="p-5 lg:col-span-2">
+            {kioskMode ? (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Secure exam mode is active. Fullscreen, tab-switch detection, right-click blocking, and clipboard restrictions are enabled.
+              </div>
+            ) : null}
+
             <div className="mb-4 grid gap-3 md:grid-cols-2">
               <div>
                 <label className="text-sm font-semibold text-slate-800">Applicant ID (optional)</label>
                 <input
                   value={applicantId}
                   onChange={(e) => setApplicantId(e.target.value)}
+                  readOnly={kioskMode && Boolean(presetApplicantId)}
                   className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
-                  placeholder="Mongo ObjectId"
+                  placeholder="Applicant ID"
                 />
               </div>
               <div>
@@ -172,6 +362,7 @@ export default function TakeExam() {
                 <input
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  readOnly={kioskMode && Boolean(presetFullName)}
                   className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
                   placeholder="Applicant name"
                 />
@@ -179,10 +370,7 @@ export default function TakeExam() {
             </div>
 
             {submitError ? (
-              <div
-                role="alert"
-                className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
-              >
+              <div role="alert" className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
                 {submitError}
               </div>
             ) : null}
@@ -192,7 +380,9 @@ export default function TakeExam() {
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                   Question {index + 1} of {questions.length}
                 </div>
-                <div className="mt-2 font-display text-xl font-semibold text-slate-900">{q?.text || "--"}</div>
+                <div className="mt-2 font-display text-xl font-semibold text-slate-900">
+                  {q?.question || q?.text || "--"}
+                </div>
               </div>
               <button
                 type="button"
@@ -205,9 +395,9 @@ export default function TakeExam() {
             </div>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {(q?.options || []).map((opt, optIdx) => {
+              {(q?.options || []).map((opt) => {
                 const qid = q?._id || q?.id;
-                const picked = answers[qid] === optIdx;
+                const picked = answers[qid] === opt;
                 return (
                   <button
                     key={`${qid}:${opt}`}
@@ -217,7 +407,7 @@ export default function TakeExam() {
                         ? "rounded-3xl border border-[color:var(--brand)]/40 bg-[color:var(--brand)]/10 px-4 py-4 text-left text-sm font-semibold text-slate-900"
                         : "rounded-3xl border border-slate-200/70 bg-white/70 px-4 py-4 text-left text-sm text-slate-800 hover:bg-white/80"
                     }
-                    onClick={() => setAnswers((a) => ({ ...a, [qid]: optIdx }))}
+                    onClick={() => setAnswers((a) => ({ ...a, [qid]: opt }))}
                   >
                     {opt}
                   </button>
@@ -273,10 +463,26 @@ export default function TakeExam() {
             <div className="mt-4 rounded-2xl bg-white/60 p-3 text-sm text-slate-700">
               Auto-submits when the timer reaches 00:00.
             </div>
+
+            {kioskMode ? (
+              <div className="mt-4 rounded-2xl bg-slate-950 p-3 text-xs text-slate-200">
+                <div className="font-semibold text-white">Security Monitor</div>
+                <div className="mt-2">Fingerprint: {securityMeta.fingerprint || "Collecting..."}</div>
+                <div className="mt-1">IP Address: {securityMeta.ipAddress || "Collecting..."}</div>
+                <div className="mt-2 space-y-1">
+                  {securityEvents.length === 0 ? (
+                    <div>No security events detected.</div>
+                  ) : (
+                    securityEvents.map((event, eventIndex) => (
+                      <div key={`${event}-${eventIndex}`}>{event}</div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
           </Panel>
         </div>
       )}
     </div>
   );
 }
-

@@ -1,37 +1,52 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../../components/common/PageHeader";
 import Panel from "../../components/common/Panel";
 import Badge from "../../components/common/Badge";
 import StatusPipeline from "../../components/common/StatusPipeline";
-import { formatDate, statusLabel, statusTone } from "../../utils/helpers";
+import { formatDate, normalizeWorkflowStatus, statusLabel, statusTone } from "../../utils/helpers";
 import * as applicantService from "../../services/applicantService";
-import { listExams, assignExamToApplicantWithSupervisor } from "../../services/examService";
 import Modal from "../../components/common/Modal";
 import { useAuth } from "../../context/AuthContext";
 import { approveAdmission } from "../../services/admissionService";
 import ApplicantForm from "../../components/forms/ApplicantForm";
-import { listTeachers } from "../../services/teacherService";
-import { listUsers } from "../../services/userService";
 import { listHeadteacherClasses } from "../../services/classService";
+import { assignHeadteacherExam, listAllHeadteacherExams } from "../../services/examService";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
+import {
+  getParentForApplicant,
+  linkParentToApplicant,
+  listAllParentApplicantParents,
+} from "../../services/parentService";
+
+const PARENT_OPTIONS_ERROR = "Unable to load parent accounts right now.";
+const PARENT_LINK_ERROR = "Unable to link the selected parent to this applicant right now.";
 
 export default function ApplicantDetails() {
+  const navigate = useNavigate();
   const { id } = useParams();
   const [applicant, setApplicant] = useState(null);
   const [loadError, setLoadError] = useState("");
   const { role } = useAuth();
   const isHeadteacher = role === "headteacher" || role === "assistant_headteacher" || role === "assistantHeadteacher";
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState("");
-  const [supervisors, setSupervisors] = useState([]);
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState("");
   const [classAssigned, setClassAssigned] = useState("");
   const [classes, setClasses] = useState([]);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [approvalError, setApprovalError] = useState("");
+  const [assignExamOpen, setAssignExamOpen] = useState(false);
+  const [availableExams, setAvailableExams] = useState([]);
+  const [selectedExamId, setSelectedExamId] = useState("");
+  const [assignExamLoading, setAssignExamLoading] = useState(false);
+  const [assignExamError, setAssignExamError] = useState("");
+  const [parentLinkOpen, setParentLinkOpen] = useState(false);
+  const [availableParents, setAvailableParents] = useState([]);
+  const [linkedParent, setLinkedParent] = useState(null);
+  const [selectedParentId, setSelectedParentId] = useState("");
+  const [parentLinkLoading, setParentLinkLoading] = useState(false);
+  const [parentLinkError, setParentLinkError] = useState("");
+
+  const normalizeExamItems = (data) => (Array.isArray(data) ? data : data?.exams || data?.items || data?.data || []);
 
   const mapApplicantData = (data) => {
     const a = data?.applicant || data;
@@ -42,10 +57,14 @@ export default function ApplicantDetails() {
       fullName: a.fullName || a.full_name,
       dateOfBirth: a.dateOfBirth || a.dob,
       gender: a.gender?.toUpperCase() || a.gender,
-      classApplyingFor: a.classApplyingFor || a.class_applied || a.class?.name || "",
+      classApplyingFor: a.classApplyingFor || a.class?.name || a.class_applied || "",
       parentName: a.parentName || a.parent_name,
       parentContact: a.parentContact || a.parent_contact,
       address: a.address,
+      status: normalizeWorkflowStatus(a.status) || "pending_review",
+      admissionStatus: normalizeWorkflowStatus(a.admissionStatus || a.admission?.status),
+      paymentStatus: normalizeWorkflowStatus(a.paymentStatus || a.payments?.[0]?.status),
+      examStatus: normalizeWorkflowStatus(a.examStatus || a.examResults?.[0]?.result),
     };
   };
 
@@ -76,7 +95,7 @@ export default function ApplicantDetails() {
     return () => {
       ignore = true;
     };
-  }, [id]);
+  }, [id, isHeadteacher]);
 
   useEffect(() => {
     if (!isHeadteacher) return;
@@ -101,45 +120,99 @@ export default function ApplicantDetails() {
     return () => {
       ignore = true;
     };
-  }, [role, applicant, classAssigned]);
+  }, [isHeadteacher, applicant, classAssigned]);
 
   useEffect(() => {
+    if (!assignExamOpen || !isHeadteacher) return;
     let ignore = false;
-    if (!assignOpen) return;
-    (async () => {
-      try {
-        const data = await listExams();
-        const items = Array.isArray(data) ? data : data.items || [];
-        if (!ignore) setExams(items);
 
-        const [tRes, aRes] = await Promise.all([
-          listTeachers(),
-          listUsers({ role: "assistantHeadteacher" }),
-        ]);
-        const tItems = Array.isArray(tRes) ? tRes : tRes.items || [];
-        const aItems = Array.isArray(aRes) ? aRes : aRes.items || [];
-        const merged = [
-          ...tItems.map((t) => ({
-            id: t.user?._id || t.user || t._id || t.id,
-            label: `${t.user?.name || "Teacher"} (Teacher)`,
-          })),
-          ...aItems.map((u) => ({
-            id: u._id || u.id,
-            label: `${u.name || u.username || "Assistant"} (Assistant Headteacher)`,
-          })),
-        ].filter((x) => x.id);
-        if (!ignore) setSupervisors(merged);
-      } catch {
+    (async () => {
+      setAssignExamLoading(true);
+      setAssignExamError("");
+      try {
+        const items = normalizeExamItems(await listAllHeadteacherExams());
+
+        const applicantClassName = String(applicant?.classApplyingFor || "").toLowerCase();
+        const publishedItems = items.filter((exam) =>
+          ["published", "active"].includes(String(exam?.status || "").toLowerCase())
+        );
+
+        const classMatchedItems = (publishedItems.length ? publishedItems : items).filter((exam) => {
+          if (!applicantClassName) return true;
+          const examClassName = String(exam?.class?.name || exam?.classLevel || "").toLowerCase();
+          return !examClassName || examClassName === applicantClassName;
+        });
+
         if (!ignore) {
-          setExams([]);
-          setSupervisors([]);
+          setAvailableExams(classMatchedItems);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setAvailableExams([]);
+          setAssignExamError(error?.response?.data?.message || "Failed to load available exams.");
+        }
+      } finally {
+        if (!ignore) {
+          setAssignExamLoading(false);
         }
       }
     })();
+
     return () => {
       ignore = true;
     };
-  }, [assignOpen]);
+  }, [applicant?.classApplyingFor, assignExamOpen, isHeadteacher]);
+
+  useEffect(() => {
+    if (!applicant?.id || !isHeadteacher) return;
+    let ignore = false;
+
+    (async () => {
+      try {
+        const data = await getParentForApplicant(applicant.id);
+        const parent = data?.parent || null;
+        if (!ignore) {
+          setLinkedParent(parent);
+          setSelectedParentId(parent?._id || parent?.id || "");
+        }
+      } catch {
+        if (!ignore) {
+          setLinkedParent(null);
+          setSelectedParentId("");
+        }
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [applicant?.id, isHeadteacher]);
+
+  useEffect(() => {
+    if (!parentLinkOpen || !isHeadteacher) return;
+    let ignore = false;
+
+    (async () => {
+      setParentLinkLoading(true);
+      setParentLinkError("");
+      try {
+        const data = await listAllParentApplicantParents();
+        const items = Array.isArray(data) ? data : data?.parents || data?.users || data?.items || data?.data || [];
+        if (!ignore) setAvailableParents(items);
+      } catch (error) {
+        if (!ignore) {
+          setAvailableParents([]);
+          setParentLinkError(PARENT_OPTIONS_ERROR);
+        }
+      } finally {
+        if (!ignore) setParentLinkLoading(false);
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [parentLinkOpen, isHeadteacher]);
 
   if (!applicant) {
     return (
@@ -157,6 +230,13 @@ export default function ApplicantDetails() {
         subtitle="Profile, exam status, payment status, documents, and admission progress."
         right={
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900/5 px-5 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
+              onClick={() => navigate("/applicants")}
+            >
+              Back to Applicants
+            </button>
             {role === "headteacher" || role === "assistantHeadteacher" ? (
               <button
                 type="button"
@@ -164,15 +244,6 @@ export default function ApplicantDetails() {
                 onClick={() => setEditOpen(true)}
               >
                 Edit
-              </button>
-            ) : null}
-            {role === "headteacher" ? (
-              <button
-                type="button"
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900/5 px-5 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
-                onClick={() => setAssignOpen(true)}
-              >
-                Assign Exam
               </button>
             ) : null}
             <Link
@@ -189,62 +260,36 @@ export default function ApplicantDetails() {
         <Panel className="lg:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="font-display text-2xl font-semibold text-slate-900">
-                {applicant.fullName}
-              </div>
-              <div className="mt-1 text-sm text-slate-600">
-                Created {formatDate(applicant.createdAt)}
-              </div>
+              <div className="font-display text-2xl font-semibold text-slate-900">{applicant.fullName}</div>
+              <div className="mt-1 text-sm text-slate-600">Created {formatDate(applicant.createdAt)}</div>
             </div>
             <Badge tone={statusTone(applicant.status)}>{statusLabel(applicant.status)}</Badge>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl bg-white/60 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Date of Birth
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {applicant.dateOfBirth || "—"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Date of Birth</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{applicant.dateOfBirth || "-"}</div>
             </div>
             <div className="rounded-2xl bg-white/60 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Gender
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {String(applicant.gender || "—")}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Gender</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{String(applicant.gender || "-")}</div>
             </div>
             <div className="rounded-2xl bg-white/60 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Class Applying For
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {applicant.classApplyingFor || "—"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Class Applying For</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{applicant.classApplyingFor || "-"}</div>
             </div>
             <div className="rounded-2xl bg-white/60 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Parent Contact
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {applicant.parentContact || "—"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parent Contact</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{applicant.parentContact || "-"}</div>
             </div>
             <div className="rounded-2xl bg-white/60 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Parent Name
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-900">
-                {applicant.parentName || "—"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parent Name</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">{applicant.parentName || "-"}</div>
             </div>
             <div className="rounded-2xl bg-white/60 p-3 md:col-span-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Address
-              </div>
-              <div className="mt-1 text-sm text-slate-800">{applicant.address || "—"}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Address</div>
+              <div className="mt-1 text-sm text-slate-800">{applicant.address || "-"}</div>
             </div>
           </div>
         </Panel>
@@ -255,7 +300,7 @@ export default function ApplicantDetails() {
             <div className="mt-2 text-sm text-slate-700">
               Latest result:{" "}
               <span className="font-semibold">
-                {applicant.examResults?.[0]?.result || applicant.examStatus || "—"}
+                {applicant.examResults?.[0]?.result || applicant.examStatus || "-"}
               </span>
             </div>
             {applicant.exam?.code ? (
@@ -263,24 +308,46 @@ export default function ApplicantDetails() {
                 Entrance Exam ID: <span className="font-semibold">{applicant.exam.code}</span>
               </div>
             ) : null}
-            {applicant.exam?.code ? (
-              <a
-                href={`/entrance-exam/${encodeURIComponent(applicant.exam.code)}?applicantId=${encodeURIComponent(
-                  applicant._id || applicant.id
-                )}&fullName=${encodeURIComponent(applicant.fullName || "")}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white hover:brightness-110"
+            {isHeadteacher ? (
+              <button
+                type="button"
+                className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110"
+                onClick={() => {
+                  setAssignExamError("");
+                  setSelectedExamId("");
+                  setAssignExamOpen(true);
+                }}
               >
-                Open entrance exam portal
-              </a>
+                Assign to Exam
+              </button>
             ) : null}
-            <Link
-              to="/exams"
-              className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
-            >
-              Go to exams
-            </Link>
+          </Panel>
+
+          <Panel>
+            <div className="font-semibold text-slate-900">Linked Parent Account</div>
+            <div className="mt-2 text-sm text-slate-700">
+              Parent:{" "}
+              <span className="font-semibold">
+                {linkedParent?.name || linkedParent?.username || linkedParent?.email || applicant.parentName || "-"}
+              </span>
+            </div>
+            {linkedParent?.email ? (
+              <div className="mt-1 text-sm text-slate-700">
+                Email: <span className="font-semibold">{linkedParent.email}</span>
+              </div>
+            ) : null}
+            {isHeadteacher ? (
+              <button
+                type="button"
+                className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110"
+                onClick={() => {
+                  setParentLinkError("");
+                  setParentLinkOpen(true);
+                }}
+              >
+                {linkedParent ? "Change Parent Link" : "Link Parent"}
+              </button>
+            ) : null}
           </Panel>
 
           <Panel>
@@ -288,22 +355,16 @@ export default function ApplicantDetails() {
             <div className="mt-2 text-sm text-slate-700">
               Status:{" "}
               <span className="font-semibold">
-                {applicant.payments?.[0]?.status || applicant.paymentStatus || "—"}
+                {applicant.payments?.[0]?.status || applicant.paymentStatus || "-"}
               </span>
             </div>
-            <Link
-              to="/payments"
-              className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
-            >
-              Go to payments
-            </Link>
           </Panel>
 
           {role === "headteacher" ? (
             <Panel>
               <div className="font-semibold text-slate-900">Admission</div>
               <div className="mt-2 text-sm text-slate-700">
-                Status: <span className="font-semibold">{applicant.admissionStatus || "—"}</span>
+                Status: <span className="font-semibold">{applicant.admissionStatus || "-"}</span>
               </div>
               <div className="mt-3 grid gap-2">
                 <select
@@ -335,9 +396,7 @@ export default function ApplicantDetails() {
               {(applicant.documents || []).length ? (
                 applicant.documents.map((d) => (
                   <div key={d._id || d.id || d.originalName} className="flex items-center justify-between">
-                    <div className="capitalize">
-                      {String(d.documentType || "").replaceAll("_", " ")}
-                    </div>
+                    <div className="capitalize">{String(d.documentType || "").replaceAll("_", " ")}</div>
                     <Badge tone="success">Uploaded</Badge>
                   </div>
                 ))
@@ -357,81 +416,7 @@ export default function ApplicantDetails() {
 
       <StatusPipeline status={applicant.status} />
 
-      <Modal
-        open={assignOpen}
-        title="Assign Entrance Exam"
-        onClose={() => setAssignOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
-              onClick={() => setAssignOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!selectedExamId || !selectedSupervisorId}
-              className="inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
-              onClick={async () => {
-                try {
-                  await assignExamToApplicantWithSupervisor(id, {
-                    examId: selectedExamId,
-                    supervisorUserId: selectedSupervisorId,
-                  });
-                  const refreshed = await applicantService.getHeadteacherApplicantById(id);
-                  setApplicant(mapApplicantData(refreshed));
-                  setAssignOpen(false);
-                } catch {
-                  alert("Assign exam failed.");
-                }
-              }}
-            >
-              Assign
-            </button>
-          </div>
-        }
-      >
-        <div className="text-sm text-slate-700">
-          Select an exam and a supervisor (Class Teacher or Assistant Headteacher). The supervisor will publish the exam
-          before the applicant can take it.
-        </div>
-        <select
-          value={selectedExamId}
-          onChange={(e) => setSelectedExamId(e.target.value)}
-          className="mt-3 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
-        >
-          <option value="">Select exam...</option>
-          {exams.map((e) => (
-            <option key={e._id || e.id} value={e._id || e.id}>
-              {e.code ? `${e.code} · ` : ""}{e.title} ({e.classLevel})
-            </option>
-          ))}
-        </select>
-
-        <div className="mt-4">
-          <label className="text-sm font-semibold text-slate-800">Supervisor</label>
-          <select
-            value={selectedSupervisorId}
-            onChange={(e) => setSelectedSupervisorId(e.target.value)}
-            className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
-          >
-            <option value="">Select supervisor...</option>
-            {supervisors.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </Modal>
-
-      <Modal
-        open={editOpen}
-        title="Edit Applicant"
-        onClose={() => setEditOpen(false)}
-      >
+      <Modal open={editOpen} title="Edit Applicant" onClose={() => setEditOpen(false)}>
         <ApplicantForm
           classes={classes}
           initialValues={applicant}
@@ -454,7 +439,7 @@ export default function ApplicantDetails() {
               };
               await applicantService.updateHeadteacherApplicant(id, payload);
               const refreshed = await applicantService.getHeadteacherApplicantById(id);
-              
+
               setApplicant(mapApplicantData(refreshed));
               setEditOpen(false);
             } catch {
@@ -462,6 +447,134 @@ export default function ApplicantDetails() {
             }
           }}
         />
+      </Modal>
+
+      <Modal
+        open={parentLinkOpen}
+        title="Link Parent to Applicant"
+        onClose={() => setParentLinkOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
+              onClick={() => setParentLinkOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedParentId || parentLinkLoading}
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+              onClick={async () => {
+                setParentLinkLoading(true);
+                setParentLinkError("");
+                try {
+                  await linkParentToApplicant({ parentId: selectedParentId, applicantId: applicant.id });
+                  const refreshedLink = await getParentForApplicant(applicant.id);
+                  const nextParent = refreshedLink?.parent || null;
+                  setLinkedParent(nextParent);
+                  setSelectedParentId(nextParent?._id || nextParent?.id || selectedParentId);
+                  setParentLinkOpen(false);
+                } catch (error) {
+                  setParentLinkError(PARENT_LINK_ERROR);
+                } finally {
+                  setParentLinkLoading(false);
+                }
+              }}
+            >
+              {parentLinkLoading ? "Saving..." : linkedParent ? "Update Link" : "Link Parent"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-slate-700">
+            Select the parent account to link with <span className="font-semibold text-slate-900">{applicant.fullName}</span>.
+          </div>
+          <select
+            value={selectedParentId}
+            onChange={(e) => setSelectedParentId(e.target.value)}
+            className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+            disabled={parentLinkLoading}
+          >
+            <option value="">Select parent...</option>
+            {availableParents.map((parent) => {
+              const parentId = parent._id || parent.id;
+              const label = parent.name || parent.username || parent.email || parentId;
+              return (
+                <option key={parentId} value={parentId}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+          {parentLinkError ? <div className="text-sm text-rose-700">{parentLinkError}</div> : null}
+          {!parentLinkLoading && availableParents.length === 0 ? (
+            <div className="text-sm text-slate-500">No parent accounts found.</div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={assignExamOpen}
+        title="Assign Applicant to Exam"
+        onClose={() => setAssignExamOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
+              onClick={() => setAssignExamOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedExamId || assignExamLoading}
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+              onClick={async () => {
+                setAssignExamLoading(true);
+                setAssignExamError("");
+                try {
+                  await assignHeadteacherExam(selectedExamId, { applicants: [id] });
+                  const refreshed = await applicantService.getHeadteacherApplicantById(id);
+                  setApplicant(mapApplicantData(refreshed));
+                  setAssignExamOpen(false);
+                } catch (error) {
+                  setAssignExamError(error?.response?.data?.message || "Failed to assign applicant to exam.");
+                } finally {
+                  setAssignExamLoading(false);
+                }
+              }}
+            >
+              {assignExamLoading ? "Assigning..." : "Assign Exam"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-slate-700">
+            Select an available exam for <span className="font-semibold text-slate-900">{applicant.fullName}</span>.
+          </div>
+          <select
+            value={selectedExamId}
+            onChange={(e) => setSelectedExamId(e.target.value)}
+            className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+            disabled={assignExamLoading}
+          >
+            <option value="">Select exam...</option>
+            {availableExams.map((exam) => (
+              <option key={exam._id || exam.id} value={exam._id || exam.id}>
+                {exam.title} ({String(exam.status || "draft").toUpperCase()})
+              </option>
+            ))}
+          </select>
+          {assignExamError ? <div className="text-sm text-rose-700">{assignExamError}</div> : null}
+          {!assignExamLoading && availableExams.length === 0 ? (
+            <div className="text-sm text-slate-500">No available exams found.</div>
+          ) : null}
+        </div>
       </Modal>
 
       <ConfirmDialog

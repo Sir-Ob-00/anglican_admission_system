@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "../common/Icons";
 import Modal from "../common/Modal";
 import { useAuth } from "../../context/AuthContext";
 import { roleHomePath } from "../../utils/helpers";
@@ -11,6 +12,7 @@ export default function StaffSignInModal({ open, onClose }) {
   const location = useLocation();
   const from = location.state?.from?.pathname || null;
   const [authError, setAuthError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -96,12 +98,21 @@ export default function StaffSignInModal({ open, onClose }) {
 
         <div>
           <label className="text-sm font-semibold text-slate-800">Password</label>
-          <input
-            type="password"
-            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500"
-            {...register("password", { required: "Password is required" })}
-            placeholder="********"
-          />
+          <div className="relative mt-1">
+            <input
+              type={showPassword ? "text" : "password"}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-slate-900 outline-none focus:border-blue-500"
+              {...register("password", { required: "Password is required" })}
+              placeholder="********"
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
           {errors.password && (
             <div className="mt-1 text-xs text-rose-700">{errors.password.message}</div>
           )}

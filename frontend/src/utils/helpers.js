@@ -17,16 +17,59 @@ export const ADMISSION_STATUSES = [
   "rejected",
 ];
 
+export function normalizeWorkflowStatus(status) {
+  const raw = String(status || "").trim().toLowerCase();
+  if (!raw) return "";
+
+  const normalized = raw.replace(/[\s-]+/g, "_");
+
+  switch (normalized) {
+    case "pending":
+    case "pendingreview":
+    case "pending_review":
+      return "pending_review";
+    case "exam_scheduled":
+    case "exams_scheduled":
+    case "scheduled_for_exam":
+      return "exam_scheduled";
+    case "exam_completed":
+    case "exams_completed":
+      return "exam_completed";
+    case "exam_passed":
+    case "exams_passed":
+    case "passed":
+      return "exam_passed";
+    case "exam_failed":
+    case "exams_failed":
+    case "failed":
+      return "exam_failed";
+    case "awaiting_payment":
+    case "payment_pending":
+      return "awaiting_payment";
+    case "payment_completed":
+    case "paid":
+    case "verified":
+      return "payment_completed";
+    case "admitted":
+      return "admitted";
+    case "rejected":
+      return "rejected";
+    default:
+      return normalized;
+  }
+}
+
 export function statusLabel(status) {
-  if (!status) return "Unknown";
-  return status
+  const normalized = normalizeWorkflowStatus(status) || String(status || "").toLowerCase();
+  if (!normalized) return "Unknown";
+  return normalized
     .split("_")
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
 }
 
 export function statusTone(status) {
-  switch (status) {
+  switch (normalizeWorkflowStatus(status)) {
     case "admitted":
     case "payment_completed":
     case "exam_passed":

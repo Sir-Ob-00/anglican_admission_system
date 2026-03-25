@@ -9,6 +9,11 @@ export async function listHeadteacherApplicants(params) {
   return res.data;
 }
 
+export async function listAllHeadteacherApplicants(params) {
+  const res = await api.get("/headteacher/parent-applicant/applicants/all", { params });
+  return res.data;
+}
+
 export async function getHeadteacherApplicantById(id) {
   const res = await api.get(`/headteacher/applicants/${id}`);
   return res.data;

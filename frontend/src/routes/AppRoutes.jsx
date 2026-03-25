@@ -18,9 +18,12 @@ import AdmissionsList from "../pages/admissions/AdmissionsList";
 import AdmissionDetails from "../pages/admissions/AdmissionDetails";
 import StudentDetails from "../pages/admissions/StudentDetails";
 import ExamsList from "../pages/exams/ExamsList";
+import CreateExam from "../pages/exams/CreateExam";
 import EditExam from "../pages/exams/EditExam";
 import ExamQuestions from "../pages/exams/ExamQuestions";
 import ExamResults from "../pages/exams/ExamResults";
+import TeacherAssignedExams from "../pages/exams/TeacherAssignedExams";
+import TeacherAssignedExamDetails from "../pages/exams/TeacherAssignedExamDetails";
 import TakeExam from "../pages/exams/TakeExam";
 import ExamScoreView from "../pages/exams/ExamScoreView";
 import EnterExamScores from "../pages/exams/EnterExamScores";
@@ -149,10 +152,14 @@ export default function AppRoutes() {
             <Route path="/admissions/students/:id" element={<StudentDetails />} />
 
             <Route path="/exams" element={<ExamsList />} />
+            <Route path="/exams/new" element={<CreateExam />} />
+            <Route path="/exams/assigned" element={<TeacherAssignedExams />} />
+            <Route path="/exams/assigned/:id" element={<TeacherAssignedExamDetails />} />
             <Route path="/exams/scores" element={<EnterExamScores />} />
             <Route path="/exams/:id/edit" element={<EditExam />} />
             <Route path="/exams/:id/questions" element={<ExamQuestions />} />
             <Route path="/exams/:id/results" element={<ExamResults />} />
+            <Route path="/exams/session/:sessionId/take" element={<TakeExam />} />
             <Route path="/exams/:id/take" element={<TakeExam />} />
             <Route path="/exams/:id/score" element={<ExamScoreView />} />
 

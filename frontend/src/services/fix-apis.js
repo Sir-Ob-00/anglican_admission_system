@@ -3,11 +3,9 @@
 
 const services = [
   'examResultService.js',
-  'examQuestionService.js', 
   'applicantService.js',
   'documentService.js',
-  'classService.js',
-  'publicExamService.js'
+  'classService.js'
 ];
 
 services.forEach(service => {

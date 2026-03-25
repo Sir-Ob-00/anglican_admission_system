@@ -9,6 +9,7 @@ import { listTeachers, listAllTeachers } from "../../services/teacherService";
 export default function ClassesList() {
   const { role } = useAuth();
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [assignTeacherOpen, setAssignTeacherOpen] = useState(false);
@@ -29,11 +30,14 @@ export default function ClassesList() {
     let ignore = false;
     (async () => {
       try {
+        if (!ignore) setLoading(true);
         const data = await listHeadteacherClasses();
         const items = Array.isArray(data) ? data : data.classes || data.items || data.data || [];
         if (!ignore) setRows(items);
       } catch {
         if (!ignore) setRows([]);
+      } finally {
+        if (!ignore) setLoading(false);
       }
     })();
     return () => {
@@ -78,9 +82,14 @@ export default function ClassesList() {
   }, [open, role]);
 
   async function refresh() {
-    const data = await listHeadteacherClasses();
-    const items = Array.isArray(data) ? data : data.classes || data.items || data.data || [];
-    setRows(items);
+    setLoading(true);
+    try {
+      const data = await listHeadteacherClasses();
+      const items = Array.isArray(data) ? data : data.classes || data.items || data.data || [];
+      setRows(items);
+    } finally {
+      setLoading(false);
+    }
   }
   const columns = useMemo(
     () => [
@@ -165,7 +174,13 @@ export default function ClassesList() {
           ) : null
         }
       />
-      <Table title="Classes List" rows={rows} columns={columns} />
+      <Table
+        title="Classes List"
+        rows={rows}
+        columns={columns}
+        loading={loading}
+        loadingText="Loading classes..."
+      />
 
       <Modal
         open={open}

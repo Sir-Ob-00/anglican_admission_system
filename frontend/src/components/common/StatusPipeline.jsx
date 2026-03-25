@@ -1,8 +1,10 @@
 import { ADMISSION_STATUSES, cx, statusLabel } from "../../utils/helpers";
 
 export default function StatusPipeline({ status }) {
-  const idx = Math.max(0, ADMISSION_STATUSES.indexOf(status));
+  const normalizedStatus = String(status || "").toLowerCase();
+  const idx = Math.max(0, ADMISSION_STATUSES.indexOf(normalizedStatus));
   const max = Math.max(0, ADMISSION_STATUSES.length - 1);
+  const isRejectedFlow = normalizedStatus === "rejected" || normalizedStatus === "exam_failed";
 
   return (
     <div className="rounded-3xl border border-white/40 bg-white/60 p-4 shadow-sm backdrop-blur-xl">
@@ -25,12 +27,12 @@ export default function StatusPipeline({ status }) {
           <div
             key={s}
             className={cx(
-              "rounded-2xl border px-3 py-2 text-sm",
+              "rounded-2xl border px-3 py-2 text-sm font-semibold",
               i < idx
                 ? "border-emerald-200 bg-emerald-600/10 text-emerald-900"
-                : i === idx
-                  ? "border-[color:var(--brand)]/30 bg-[color:var(--brand)]/10 text-slate-900"
-                  : "border-slate-200/70 bg-white/60 text-slate-700"
+                : s === "rejected" && isRejectedFlow
+                  ? "border-rose-200 bg-rose-600/10 text-rose-900"
+                  : "border-[color:var(--brand)]/20 bg-[color:var(--brand)]/10 text-slate-900"
             )}
           >
             {statusLabel(s)}

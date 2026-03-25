@@ -4,81 +4,96 @@ import Table from "../../components/common/Table";
 import Badge from "../../components/common/Badge";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import PageHeader from "../../components/common/PageHeader";
-import { formatDate, statusLabel, statusTone } from "../../utils/helpers";
+import { formatDate, normalizeWorkflowStatus, statusLabel, statusTone } from "../../utils/helpers";
 import * as applicantService from "../../services/applicantService";
 import { useAuth } from "../../context/AuthContext";
+import { getApplicantsForParent } from "../../services/parentService";
+
+function deriveApplicantStatus(a) {
+  const rawStatus = normalizeWorkflowStatus(a.status);
+  const admissionStatus = normalizeWorkflowStatus(a.admissionStatus || a.admission?.status);
+  const latestExamResult = normalizeWorkflowStatus(
+    a.examResults?.[0]?.result || a.examResult?.result || a.examStatus
+  );
+  const paymentStatus = normalizeWorkflowStatus(
+    a.payments?.[0]?.status || a.paymentStatus
+  );
+  const hasAssignedExam = Boolean(
+    a.exam ||
+      a.examId ||
+      a.exam_id ||
+      a.examCode ||
+      a.exam?.code ||
+      a.examAssignments?.length
+  );
+
+  if (admissionStatus === "admitted" || rawStatus === "admitted") return "admitted";
+  if (admissionStatus === "rejected" || rawStatus === "rejected" || latestExamResult === "exam_failed" || rawStatus === "exam_failed") {
+    return "rejected";
+  }
+  if (paymentStatus === "payment_completed") {
+    return "payment_completed";
+  }
+  if (paymentStatus === "awaiting_payment" || rawStatus === "awaiting_payment") {
+    return "awaiting_payment";
+  }
+  if (latestExamResult === "exam_passed" || latestExamResult === "exam_failed" || latestExamResult === "exam_completed") {
+    return "exam_completed";
+  }
+  if (rawStatus === "exam_completed") return "exam_completed";
+  if (hasAssignedExam || rawStatus === "exam_scheduled") return "exam_scheduled";
+  return rawStatus || "pending_review";
+}
+
+function normalizeApplicant(a) {
+  return {
+    ...a,
+    id: a.id || a._id,
+    fullName: a.fullName || a.full_name,
+    classApplyingFor: a.classApplyingFor || a.class?.name || a.class_applied || "",
+    createdAt: a.createdAt || a.created_at,
+    status: deriveApplicantStatus(a),
+  };
+}
 
 export default function ApplicantsList() {
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const isHeadteacher = role === "headteacher" || role === "assistant_headteacher" || role === "assistantHeadteacher";
+  const isParent = String(role || "").toLowerCase() === "parent";
   const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
   const status = searchParams.get("status") || "";
-
-  function openConductWindow(applicant) {
-    const examCode = applicant?.exam?.code;
-    if (!examCode) return;
-
-    const params = new URLSearchParams({
-      applicantId: String(applicant.id || applicant._id || ""),
-      fullName: applicant.fullName || "",
-      secure: "1",
-      popup: "1",
-    });
-    const width = Math.max(window.screen.availWidth, 1200);
-    const height = Math.max(window.screen.availHeight, 800);
-    const features = [
-      "popup=yes",
-      "toolbar=no",
-      "location=no",
-      "status=no",
-      "menubar=no",
-      "scrollbars=yes",
-      "resizable=yes",
-      `width=${width}`,
-      `height=${height}`,
-      "left=0",
-      "top=0",
-    ].join(",");
-
-    const targetUrl = `${window.location.origin}/entrance-exam/${encodeURIComponent(examCode)}?${params.toString()}`;
-    const win = window.open(targetUrl, `conduct-exam-${applicant.id || applicant._id}`, features);
-    if (win) win.focus();
-    else window.location.assign(targetUrl);
-  }
 
   useEffect(() => {
     let ignore = false;
     (async () => {
       try {
-        if (!isHeadteacher) {
-          if (!ignore) setRows([]);
-          return;
-        }
-        
-        const data = await applicantService.listHeadteacherApplicants(status ? { status } : undefined);
+        if (!ignore) setLoading(true);
+        const data = isParent
+          ? await getApplicantsForParent(user?.id || user?._id)
+          : await applicantService.listHeadteacherApplicants();
         const items = Array.isArray(data) ? data : data.items || data.applicants || [];
+        const normalizedItems = items.map(normalizeApplicant);
+        const filteredItems = status
+          ? normalizedItems.filter((item) => item.status === String(status).toLowerCase())
+          : normalizedItems;
+
         if (!ignore) {
-          setRows(
-            items.map((a) => ({
-              ...a,
-              id: a.id || a._id,
-              fullName: a.fullName || a.full_name,
-              classApplyingFor: a.classApplyingFor || a.class_applied || a.class?.name || "",
-              createdAt: a.createdAt || a.created_at,
-            }))
-          );
+          setRows(filteredItems);
         }
-      } catch {
+      } catch (error) {
         if (!ignore) setRows([]);
+      } finally {
+        if (!ignore) setLoading(false);
       }
     })();
     return () => {
       ignore = true;
     };
-  }, [status]);
+  }, [status, role, isParent, user]);
 
   const columns = useMemo(
     () => [
@@ -106,19 +121,6 @@ export default function ApplicantsList() {
             >
               View
             </button>
-            {role === "teacher" ? (
-              <button
-                type="button"
-                disabled={!r.exam?.code || r.status !== "exam_scheduled" || r.exam?.status !== "active"}
-                className="inline-flex h-9 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-3 text-xs font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openConductWindow(r);
-                }}
-              >
-                Conduct
-              </button>
-            ) : null}
             {isHeadteacher ? (
               <button
                 type="button"
@@ -145,7 +147,9 @@ export default function ApplicantsList() {
         subtitle={
           role === "teacher"
             ? "Applicants assigned to your entrance exams. Use Conduct to launch a supervised exam session."
-            : "Search, review, and manage admission applicants."
+            : isParent
+              ? "Track your linked applicants and their admission progress."
+              : "Search, review, and manage admission applicants."
         }
         right={
           isHeadteacher ? (
@@ -161,29 +165,71 @@ export default function ApplicantsList() {
       />
 
       <Table
-        title={role === "teacher" ? "Assigned Applicants" : "Applicants List"}
+        title={role === "teacher" ? "Assigned Applicants" : isParent ? "My Applicants" : "Applicants List"}
         rows={rows}
         columns={columns}
-        onRowClick={(r) => navigate(`/applicants/${r.id}`)}
+        loading={loading}
+        loadingText="Loading applicants..."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {[
-              ["pending_review", "Pending Review"],
-              ["exam_scheduled", "Exam Scheduled"],
-              ["exam_completed", "Exam Completed"],
-              ["awaiting_payment", "Awaiting Payment"],
-              ["rejected", "Rejected"],
-            ].map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-3 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
-                onClick={() => navigate(`/applicants?status=${k}`)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          isParent ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                ["", "All", "bg-[color:var(--brand)]/10 text-[color:var(--brand)] hover:bg-[color:var(--brand)]/20"],
+                ["pending_review", "Pending Review", "bg-slate-100 text-slate-800 hover:bg-slate-200"],
+                ["exam_scheduled", "Exam Scheduled", "bg-indigo-100 text-indigo-800 hover:bg-indigo-200"],
+                ["exam_completed", "Exam Completed", "bg-blue-100 text-blue-800 hover:bg-blue-200"],
+                ["awaiting_payment", "Awaiting Payment", "bg-amber-100 text-amber-800 hover:bg-amber-200"],
+                ["admitted", "Admitted", "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"],
+                ["rejected", "Rejected", "bg-rose-100 text-rose-800 hover:bg-rose-200"],
+              ].map(([k, label, colorCls]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`inline-flex h-10 items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-colors ${colorCls} ${
+                    status === k ? "ring-2 ring-offset-2 ring-[color:var(--brand)]" : ""
+                  }`}
+                  onClick={() => {
+                    if (!k || status === k) {
+                      navigate("/applicants");
+                    } else {
+                      navigate(`/applicants?status=${k}`);
+                    }
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                ["", "All", "bg-[color:var(--brand)]/10 text-[color:var(--brand)] hover:bg-[color:var(--brand)]/20"],
+                ["pending_review", "Pending Review", "bg-slate-100 text-slate-800 hover:bg-slate-200"],
+                ["exam_scheduled", "Exam Scheduled", "bg-indigo-100 text-indigo-800 hover:bg-indigo-200"],
+                ["exam_completed", "Exam Completed", "bg-blue-100 text-blue-800 hover:bg-blue-200"],
+                ["awaiting_payment", "Awaiting Payment", "bg-amber-100 text-amber-800 hover:bg-amber-200"],
+                ["admitted", "Admitted", "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"],
+                ["rejected", "Rejected", "bg-rose-100 text-rose-800 hover:bg-rose-200"],
+              ].map(([k, label, colorCls]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`inline-flex h-10 items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-colors ${colorCls} ${
+                    status === k ? "ring-2 ring-offset-2 ring-[color:var(--brand)]" : ""
+                  }`}
+                  onClick={() => {
+                    if (!k || status === k) {
+                      navigate("/applicants");
+                    } else {
+                      navigate(`/applicants?status=${k}`);
+                    }
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )
         }
       />
 
@@ -197,12 +243,31 @@ export default function ApplicantsList() {
           const target = confirm;
           setConfirm(null);
           try {
-            if (isHeadteacher) {
-              await applicantService.deleteHeadteacherApplicant(target.id);
-            }
-            setRows((r) => r.filter((x) => x.id !== target.id));
-          } catch {
-            setRows((r) => r.filter((x) => x.id !== target.id));
+            setLoading(true);
+            console.log("Deleting applicant for role:", role);
+            
+            // Use the working headteacher endpoint
+            await applicantService.deleteHeadteacherApplicant(target.id);
+            
+            // Refresh the list
+            const refreshData = await applicantService.listHeadteacherApplicants(status ? { status: status.toUpperCase() } : undefined);
+            const items = Array.isArray(refreshData) ? refreshData : refreshData.items || refreshData.applicants || [];
+            setRows(
+              items.map((a) => ({
+                ...a,
+                id: a.id || a._id,
+                fullName: a.fullName || a.full_name,
+                classApplyingFor: a.classApplyingFor || a.class?.name || a.class_applied || "",
+                createdAt: a.createdAt || a.created_at,
+              }))
+            );
+            
+            alert("Applicant deleted successfully!");
+          } catch (error) {
+            console.error("Failed to delete applicant:", error);
+            alert("Failed to delete applicant. Please try again.");
+          } finally {
+            setLoading(false);
           }
         }}
       />

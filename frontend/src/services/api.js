@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const rawBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://school-system-backend-6znb.onrender.com/api/v1";
+
 const api = axios.create({
-  baseURL: "https://school-system-backend-6znb.onrender.com/api/v1",
+  baseURL: rawBaseUrl.replace(/\/+$/, ""),
   headers: { "Content-Type": "application/json" },
 });
 

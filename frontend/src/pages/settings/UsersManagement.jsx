@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Eye, EyeOff } from "../../components/common/Icons";
 import { useAuth } from "../../context/AuthContext";
 import * as adminService from "../../services/adminService";
 import { verifyMfa, resendOtp } from "../../services/mfaService";
@@ -29,6 +30,8 @@ export default function UsersManagement() {
   const [mfaOtp, setMfaOtp] = useState("");
   const [mfaError, setMfaError] = useState("");
   const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
 
   // Fetch users on component mount
   useEffect(() => {
@@ -362,12 +365,21 @@ export default function UsersManagement() {
           </div>
           <div className="md:col-span-2">
             <label className="text-sm font-semibold text-slate-800">Temporary Password</label>
-            <input
-              type="password"
-              className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
-              {...register("password", { required: true })}
-              placeholder="Set an initial password"
-            />
+            <div className="relative mt-1">
+              <input
+                type={showCreatePassword ? "text" : "password"}
+                className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 pr-10 text-slate-900 outline-none focus:border-[color:var(--brand)]"
+                {...register("password", { required: true })}
+                placeholder="Set an initial password"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                onClick={() => setShowCreatePassword(!showCreatePassword)}
+              >
+                {showCreatePassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
           <div className="md:col-span-1 flex items-end gap-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -528,12 +540,21 @@ export default function UsersManagement() {
           </div>
           <div>
             <label className="text-sm font-semibold text-slate-800">Temporary Password</label>
-            <input
-              type="password"
-              className="mt-1 h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-slate-900 outline-none focus:border-[color:var(--brand)]"
-              {...registerEdit("password")}
-              placeholder="Leave blank to keep current" 
-            />
+            <div className="relative mt-1">
+              <input
+                type={showEditPassword ? "text" : "password"}
+                className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 pr-10 text-slate-900 outline-none focus:border-[color:var(--brand)]"
+                {...registerEdit("password")}
+                placeholder="Leave blank to keep current" 
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                onClick={() => setShowEditPassword(!showEditPassword)}
+              >
+                {showEditPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
