@@ -163,6 +163,7 @@ export default function Dashboard() {
   const [parent, setParent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [parentPaymentAmount, setParentPaymentAmount] = useState("");
   const parentApplicant = parent?.latestApplicant || parent?.applicants?.[0] || null;
   const normalizedParentPaymentStatus = String(parentApplicant?.paymentStatus || "").toLowerCase();
   const parentPaymentCompleted = normalizedParentPaymentStatus === "payment_completed";
@@ -171,9 +172,20 @@ export default function Dashboard() {
   const handlePayAdmissionFee = async (applicantId) => {
     try {
       setLoading(true);
-      const response = await initializeAdmissionPayment(applicantId);
-      // Redirect to Paystack payment page
-      window.location.href = response.authorization_url;
+      const amountInSubUnits = Number(parentPaymentAmount) * 100;
+      const response = await initializeAdmissionPayment(applicantId, amountInSubUnits);
+      
+      const authUrl = response?.data?.authorizationUrl || response?.authorizationUrl || response?.data?.authorization_url || response?.authorization_url;
+      const reference = response?.data?.reference || response?.reference;
+      
+      if (authUrl) {
+        window.location.href = authUrl;
+      } else if (reference) {
+        // Route directly to our verification page using the reference
+        window.location.href = `/payments/verify?reference=${reference}`;
+      } else {
+        alert("Could not retrieve payment link or reference.");
+      }
     } catch (error) {
       const message = error?.response?.data?.message || "Failed to initialize payment";
       alert(message);
@@ -485,7 +497,7 @@ export default function Dashboard() {
               <div className="font-display text-lg font-semibold text-slate-900">Payment Actions</div>
               <div className="mt-3 space-y-3">
                 <div className="rounded-2xl bg-white/60 p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-900">
                         {parentApplicant?.fullName || "No applicant selected"}
@@ -494,13 +506,35 @@ export default function Dashboard() {
                         Payment Status: {parentApplicant ? (parentPaymentCompleted ? "Paid" : "Pending") : "Unavailable"}
                       </div>
                     </div>
-                    <button
-                      onClick={() => parentApplicant?._id && handlePayAdmissionFee(parentApplicant._id)}
-                      disabled={loading || !canInitiateParentPayment}
-                      className="inline-flex h-9 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {loading ? "Processing..." : parentPaymentCompleted ? "Payment Completed" : "Initiate Payment"}
-                    </button>
+                    {canInitiateParentPayment ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Amount (GHS)"
+                          value={parentPaymentAmount}
+                          onChange={(e) => setParentPaymentAmount(e.target.value)}
+                          className="h-9 w-32 rounded-2xl border border-slate-200/70 bg-white/80 px-2 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+                          disabled={loading}
+                        />
+                        <button
+                          onClick={() => parentApplicant?._id && handlePayAdmissionFee(parentApplicant._id)}
+                          disabled={loading || !parentPaymentAmount}
+                          className="inline-flex h-9 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {loading ? "Processing..." : "Pay Now"}
+                        </button>
+                      </div>
+                    ) : (
+                      parentPaymentCompleted ? (
+                        <button
+                          disabled
+                          className="inline-flex h-9 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-400"
+                        >
+                          Payment Completed
+                        </button>
+                      ) : null
+                    )}
                   </div>
                 </div>
                 {parentApplicant ? parentPaymentCompleted ? (

@@ -18,6 +18,7 @@ import {
   linkParentToApplicant,
   listAllParentApplicantParents,
 } from "../../services/parentService";
+import { initializeAdmissionPayment } from "../../services/paymentService";
 
 const PARENT_OPTIONS_ERROR = "Unable to load parent accounts right now.";
 const PARENT_LINK_ERROR = "Unable to link the selected parent to this applicant right now.";
@@ -45,6 +46,12 @@ export default function ApplicantDetails() {
   const [selectedParentId, setSelectedParentId] = useState("");
   const [parentLinkLoading, setParentLinkLoading] = useState(false);
   const [parentLinkError, setParentLinkError] = useState("");
+  const [initiatePaymentOpen, setInitiatePaymentOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [availablePaymentApplicants, setAvailablePaymentApplicants] = useState([]);
+  const [selectedPaymentApplicantId, setSelectedPaymentApplicantId] = useState("");
+  const [paymentInitLoading, setPaymentInitLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
 
   const normalizeExamItems = (data) => (Array.isArray(data) ? data : data?.exams || data?.items || data?.data || []);
 
@@ -162,6 +169,28 @@ export default function ApplicantDetails() {
       ignore = true;
     };
   }, [applicant?.classApplyingFor, assignExamOpen, isHeadteacher]);
+
+  useEffect(() => {
+    if (!initiatePaymentOpen || !isHeadteacher) return;
+    let ignore = false;
+    (async () => {
+      setAvailablePaymentApplicants([]);
+      try {
+        const data = await applicantService.listHeadteacherApplicants({ limit: 1000 });
+        const items = Array.isArray(data) ? data : data?.applicants || data?.items || data?.data || [];
+        if (!ignore) {
+          setAvailablePaymentApplicants(items);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setPaymentError("Failed to load applicants for payment.");
+        }
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [initiatePaymentOpen, isHeadteacher]);
 
   useEffect(() => {
     if (!applicant?.id || !isHeadteacher) return;
@@ -358,6 +387,20 @@ export default function ApplicantDetails() {
                 {applicant.payments?.[0]?.status || applicant.paymentStatus || "-"}
               </span>
             </div>
+            {isHeadteacher ? (
+              <button
+                type="button"
+                className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110"
+                onClick={() => {
+                  setPaymentError("");
+                  setSelectedPaymentApplicantId(applicant.id);
+                  setPaymentAmount("");
+                  setInitiatePaymentOpen(true);
+                }}
+              >
+                Initiate Payment
+              </button>
+            ) : null}
           </Panel>
 
           {role === "headteacher" ? (
@@ -613,6 +656,90 @@ export default function ApplicantDetails() {
         }
       >
         <div className="text-sm text-slate-700">{approvalError}</div>
+      </Modal>
+
+      <Modal
+        open={initiatePaymentOpen}
+        title="Initiate Payment"
+        onClose={() => setInitiatePaymentOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900/5 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-900/10"
+              onClick={() => setInitiatePaymentOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedPaymentApplicantId || !paymentAmount || paymentInitLoading}
+              className="inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--brand)] px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+              onClick={async () => {
+                setPaymentInitLoading(true);
+                setPaymentError("");
+                try {
+                  const amountInSubUnits = Number(paymentAmount) * 100;
+                  const res = await initializeAdmissionPayment(selectedPaymentApplicantId, amountInSubUnits);
+                  
+                  const authUrl = res?.data?.authorizationUrl || res?.authorizationUrl || res?.data?.authorization_url || res?.authorization_url;
+                  const reference = res?.data?.reference || res?.reference;
+                  
+                  if (authUrl) {
+                    window.location.href = authUrl;
+                  } else if (reference) {
+                    // Route directly to our verification page using the reference
+                    window.location.href = `/payments/verify?reference=${reference}`;
+                  } else {
+                    setPaymentError("Could not retrieve payment link.");
+                    setPaymentInitLoading(false);
+                  }
+                } catch (error) {
+                  setPaymentError(error?.response?.data?.message || "Failed to initiate payment.");
+                  setPaymentInitLoading(false);
+                }
+              }}
+            >
+              {paymentInitLoading ? "Processing..." : "Proceed to Payment"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-slate-700">
+            Select an applicant to initialize the admission fee payment. You will be redirected to Paystack.
+          </div>
+          <select
+            value={selectedPaymentApplicantId}
+            onChange={(e) => setSelectedPaymentApplicantId(e.target.value)}
+            className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+            disabled={paymentInitLoading}
+          >
+            <option value="">Select applicant...</option>
+            {availablePaymentApplicants.map((a) => {
+              const aId = a._id || a.id;
+              const label = `${a.fullName || a.full_name || aId} - ${a.status || "Pending"}`;
+              return (
+                <option key={aId} value={aId}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+          <input
+            type="number"
+            min="1"
+            placeholder="Enter Amount (GHS)"
+            value={paymentAmount}
+            onChange={(e) => setPaymentAmount(e.target.value)}
+            className="h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-sm text-slate-900 outline-none focus:border-[color:var(--brand)]"
+            disabled={paymentInitLoading}
+          />
+          {paymentError ? <div className="text-sm text-rose-700">{paymentError}</div> : null}
+          {!paymentInitLoading && availablePaymentApplicants.length === 0 ? (
+             <div className="text-sm text-slate-500">Loading applicants...</div>
+          ) : null}
+        </div>
       </Modal>
     </div>
   );

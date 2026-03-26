@@ -2,8 +2,16 @@ import api from "./api";
 
 // NEW PAYSTACK-BASED PAYMENT FUNCTIONS
 
-export async function initializeAdmissionPayment(applicantId) {
-  const res = await api.post("/headteacher/payments/initiate", { applicantId });
+export async function initializeAdmissionPayment(applicantId, amount) {
+  const payload = { applicantId };
+  if (amount !== undefined) payload.amount = amount;
+  payload.callback_url = window.location.origin + "/payments/verify";
+  const res = await api.post("/headteacher/payments/initiate", payload);
+  return res.data;
+}
+
+export async function verifyHeadteacherPayment(reference) {
+  const res = await api.post("/headteacher/payments/verify", { reference });
   return res.data;
 }
 

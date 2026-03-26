@@ -29,6 +29,7 @@ import ExamScoreView from "../pages/exams/ExamScoreView";
 import EnterExamScores from "../pages/exams/EnterExamScores";
 import PaymentsList from "../pages/payments/PaymentsList";
 import PaymentSubmissions from "../pages/payments/PaymentSubmissions";
+import PaymentVerification from "../pages/payments/PaymentVerification";
 // Removed: InitiatePayment - parents now pay directly from dashboard
 import Documents from "../pages/documents/Documents";
 import ClassesList from "../pages/classes/ClassesList";
@@ -90,6 +91,7 @@ export default function AppRoutes() {
         <Route path="/entrance-exam/:code/submitted" element={<EntranceExamSubmitted />} />
 
         <Route element={<ProtectedRoute />}>
+          <Route path="/payments/verify" element={<PaymentVerification />} />
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<RoleHomeRedirect />} />
 
